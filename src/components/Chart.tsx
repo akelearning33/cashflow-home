@@ -26,9 +26,15 @@ export function Chart({ year }: Props) {
   useEffect(() => {
     async function load() {
       setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
       const { data: rows, error } = await supabase
         .from('transactions')
         .select('type, amount, date')
+        .eq('user_id', user.id)
         .gte('date', `${year}-01-01`)
         .lte('date', `${year}-12-31`);
 
