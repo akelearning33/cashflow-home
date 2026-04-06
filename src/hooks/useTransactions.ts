@@ -22,6 +22,13 @@ export function useTransactions(): UseTransactionsReturn {
       setLoading(true);
       setError(null);
 
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setError('Not authenticated');
+        setLoading(false);
+        return;
+      }
+
       const firstDay = `${year}-${String(month).padStart(2, '0')}-01`;
       const lastDay = `${year}-${String(month).padStart(2, '0')}-${getDaysInMonth(
         new Date(year, month - 1)
@@ -30,6 +37,7 @@ export function useTransactions(): UseTransactionsReturn {
       let query = supabase
         .from('transactions')
         .select('*')
+        .eq('user_id', user.id)
         .gte('date', firstDay)
         .lte('date', lastDay)
         .order('date', { ascending: false });
@@ -67,10 +75,14 @@ export function useTransactions(): UseTransactionsReturn {
   }, []);
 
   const deleteTransaction = useCallback(async (id: string): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
     const { error: deleteError } = await supabase
       .from('transactions')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', user.id);
 
     if (deleteError) throw new Error(deleteError.message);
   }, []);
