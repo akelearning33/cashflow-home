@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Plus, X } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Plus, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
-import { TransactionList } from '../components/TransactionList';
+import { TransactionItem } from '../components/TransactionItem';
 import { TransactionForm } from '../components/TransactionForm';
 import { useTransactions } from '../hooks/useTransactions';
+import { formatCurrency } from '../utils/formatCurrency';
 import type { TransactionType } from '../types';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -19,18 +20,62 @@ const MONTHS = [
   { value: 11, label: 'November' }, { value: 12, label: 'December' },
 ];
 
+const CATEGORY_COLORS: Record<string, string> = {
+  Food: '#f97316',
+  Transport: '#3b82f6',
+  Utilities: '#eab308',
+  Healthcare: '#ec4899',
+  Shopping: '#a855f7',
+  Entertainment: '#14b8a6',
+  Salary: '#22c55e',
+  Bonus: '#10b981',
+  Freelance: '#06b6d4',
+  Other: '#9ca3af',
+};
+
+const FALLBACK_COLORS = [
+  '#f97316', '#3b82f6', '#eab308', '#ec4899', '#a855f7',
+  '#14b8a6', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16',
+];
+
+function getCategoryColor(category: string, index: number): string {
+  return CATEGORY_COLORS[category] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+}
+
 type FilterType = TransactionType | 'all';
 
 export function TransactionsPage() {
   const [year, setYear] = useState(CURRENT_YEAR);
   const [month, setMonth] = useState(CURRENT_MONTH);
-  const [typeFilter, setTypeFilter] = useState<FilterType>('all');
+  const [typeFilter, setTypeFilter] = useState<FilterType>('expense');
   const [showForm, setShowForm] = useState(false);
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const { transactions, loading, error, fetchTransactions, deleteTransaction } = useTransactions();
 
   useEffect(() => {
     fetchTransactions(year, month, typeFilter);
   }, [year, month, typeFilter, fetchTransactions]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of transactions) {
+      map.set(t.category, (map.get(t.category) ?? 0) + Number(t.amount));
+    }
+    const total = Array.from(map.values()).reduce((s, v) => s + v, 0);
+    return Array.from(map.entries())
+      .map(([category, amount]) => ({
+        category,
+        amount,
+        pct: total > 0 ? Math.round((amount / total) * 100) : 0,
+        items: transactions.filter((t) => t.category === category),
+      }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [transactions]);
+
+  const total = useMemo(
+    () => transactions.reduce((s, t) => s + Number(t.amount), 0),
+    [transactions]
+  );
 
   async function handleDelete(id: string) {
     try {
@@ -46,24 +91,26 @@ export function TransactionsPage() {
     fetchTransactions(year, month, typeFilter);
   }
 
+  const monthLabel = MONTHS.find((m) => m.value === month)?.label ?? '';
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+      <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold text-gray-900">Transactions</h1>
           <button
             onClick={() => setShowForm((o) => !o)}
             className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
             {showForm ? <X size={16} /> : <Plus size={16} />}
-            {showForm ? 'Cancel' : 'Add Transaction'}
+            {showForm ? 'Cancel' : 'Add'}
           </button>
         </div>
 
-        {/* Add form modal */}
+        {/* Add form */}
         {showForm && (
           <div className="bg-white rounded-2xl border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">New Transaction</h2>
@@ -71,58 +118,154 @@ export function TransactionsPage() {
           </div>
         )}
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={month}
-            onChange={(e) => setMonth(Number(e.target.value))}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            {MONTHS.map((m) => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
-          <select
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            {YEARS.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-          {/* Type filter */}
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
-            {(['all', 'income', 'expense'] as FilterType[]).map((f) => (
+        {/* Main card */}
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+
+          {/* Expense / Income / All tabs */}
+          <div className="flex border-b border-gray-100">
+            {([
+              { value: 'expense', label: 'Expenses' },
+              { value: 'income',  label: 'Income'   },
+              { value: 'all',     label: 'All'       },
+            ] as { value: FilterType; label: string }[]).map(({ value, label }) => (
               <button
-                key={f}
-                onClick={() => setTypeFilter(f)}
-                className={`px-3 py-1.5 capitalize transition-colors ${
-                  typeFilter === f
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                key={value}
+                onClick={() => { setTypeFilter(value); setExpandedCategory(null); }}
+                className={`flex-1 py-3 text-sm font-semibold transition-colors ${
+                  typeFilter === value
+                    ? value === 'expense'
+                      ? 'text-red-600 border-b-2 border-red-500'
+                      : value === 'income'
+                      ? 'text-green-600 border-b-2 border-green-500'
+                      : 'text-indigo-600 border-b-2 border-indigo-500'
+                    : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
-                {f}
+                {label}
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Error */}
-        {error && (
-          <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-            {error}
-          </p>
-        )}
+          {/* Month / Year selectors */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+            <select
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value))}
+              className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {MONTHS.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            <select
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+              className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {YEARS.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
 
-        {/* List */}
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          <TransactionList
-            transactions={transactions}
-            onDelete={handleDelete}
-            loading={loading}
-          />
+          {/* Loading skeleton */}
+          {loading && (
+            <div className="p-4 space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <p className="text-red-600 text-sm bg-red-50 px-4 py-3">{error}</p>
+          )}
+
+          {/* Empty state */}
+          {!loading && !error && grouped.length === 0 && (
+            <div className="text-center py-12 text-gray-400 text-sm">
+              No transactions found for this period.
+            </div>
+          )}
+
+          {/* Content */}
+          {!loading && !error && grouped.length > 0 && (
+            <>
+              {/* Total */}
+              <div className="px-4 pt-4 pb-2">
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(total)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{monthLabel} {year}</p>
+              </div>
+
+              {/* Segmented bar */}
+              <div className="px-4 pb-4">
+                <div className="flex h-3 rounded-full overflow-hidden gap-px">
+                  {grouped.map((g, i) => (
+                    <div
+                      key={g.category}
+                      title={`${g.category} ${g.pct}%`}
+                      style={{
+                        width: `${g.pct}%`,
+                        backgroundColor: getCategoryColor(g.category, i),
+                        minWidth: g.pct > 0 ? '3px' : '0',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Category rows */}
+              <div className="divide-y divide-gray-50">
+                {grouped.map((g, i) => (
+                  <div key={g.category}>
+                    <button
+                      className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left"
+                      onClick={() =>
+                        setExpandedCategory(expandedCategory === g.category ? null : g.category)
+                      }
+                    >
+                      {/* Category color avatar */}
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-white text-sm font-bold"
+                        style={{ backgroundColor: getCategoryColor(g.category, i) }}
+                      >
+                        {g.category.charAt(0).toUpperCase()}
+                      </div>
+
+                      {/* Name */}
+                      <span className="flex-1 text-sm font-medium text-gray-800">
+                        {g.category}
+                      </span>
+
+                      {/* Percentage */}
+                      <span className="text-sm text-gray-400 w-10 text-right">{g.pct}%</span>
+
+                      {/* Amount */}
+                      <span className="text-sm font-semibold text-gray-800 w-28 text-right">
+                        {formatCurrency(g.amount)}
+                      </span>
+
+                      {/* Expand icon */}
+                      {expandedCategory === g.category
+                        ? <ChevronUp size={15} className="text-gray-400 flex-shrink-0" />
+                        : <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
+                      }
+                    </button>
+
+                    {/* Individual transactions (expanded) */}
+                    {expandedCategory === g.category && (
+                      <div className="bg-gray-50 divide-y divide-gray-100">
+                        {g.items.map((t) => (
+                          <TransactionItem key={t.id} transaction={t} onDelete={handleDelete} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </main>
     </div>
