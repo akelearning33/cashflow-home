@@ -43,3 +43,9 @@ export interface MonthlyChartData {
   income: number;
   expense: number;
 }
+
+export interface Category {
+  id: string;
+  type: TransactionType;
+  name: string;
+}

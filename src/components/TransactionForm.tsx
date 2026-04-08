@@ -1,17 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { useTransactions } from '../hooks/useTransactions';
+import { useCategories } from '../hooks/useCategories';
 import type { TransactionType } from '../types';
-
-const INCOME_CATEGORIES = ['Salary', 'Bonus', 'Freelance', 'Other'];
-const EXPENSE_CATEGORIES = [
-  'Food',
-  'Transport',
-  'Utilities',
-  'Healthcare',
-  'Shopping',
-  'Entertainment',
-  'Other',
-];
 
 interface Props {
   onSuccess: () => void;
@@ -19,6 +9,7 @@ interface Props {
 
 export function TransactionForm({ onSuccess }: Props) {
   const { addTransaction } = useTransactions();
+  const { categories, loading: categoriesLoading, fetchCategories } = useCategories();
   const today = new Date().toISOString().slice(0, 10);
 
   const [type, setType] = useState<TransactionType>('expense');
@@ -29,9 +20,15 @@ export function TransactionForm({ onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const categories = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
 
-  async function handleSubmit(e: FormEvent) {
+  const availableCategories = categories
+    .filter((c) => c.type === type)
+    .map((c) => c.name);
+
+  async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
     setError('');
 
@@ -116,10 +113,13 @@ export function TransactionForm({ onSuccess }: Props) {
           required
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          disabled={categoriesLoading}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white disabled:opacity-60"
         >
-          <option value="">Select category…</option>
-          {categories.map((c) => (
+          <option value="">
+            {categoriesLoading ? 'Loading…' : 'Select category…'}
+          </option>
+          {availableCategories.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>

@@ -35,20 +35,24 @@ export function useAdmin(): UseAdminReturn {
   }, []);
 
   const updateUserRole = useCallback(async (id: string, role: UserRole): Promise<void> => {
-    const { error: updateError } = await supabase
+    const { data, error: updateError } = await supabase
       .from('profiles')
       .update({ role })
-      .eq('id', id);
+      .eq('id', id)
+      .select();
     if (updateError) throw new Error(updateError.message);
+    if (!data || data.length === 0) throw new Error('Failed to update role. Your session may have expired — please log in again.');
   }, []);
 
   const toggleUserActive = useCallback(
     async (id: string, isActive: boolean): Promise<void> => {
-      const { error: updateError } = await supabase
+      const { data, error: updateError } = await supabase
         .from('profiles')
         .update({ is_active: isActive })
-        .eq('id', id);
+        .eq('id', id)
+        .select();
       if (updateError) throw new Error(updateError.message);
+      if (!data || data.length === 0) throw new Error('Failed to update status. Your session may have expired — please log in again.');
     },
     []
   );

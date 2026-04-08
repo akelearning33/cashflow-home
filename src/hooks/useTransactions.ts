@@ -21,57 +21,59 @@ export function useTransactions(): UseTransactionsReturn {
     async (year: number, month: number, type?: TransactionType | 'all') => {
       setLoading(true);
       setError(null);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setError('Not authenticated');
+          return;
+        }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError('Not authenticated');
+        const firstDay = `${year}-${String(month).padStart(2, '0')}-01`;
+        const lastDay = `${year}-${String(month).padStart(2, '0')}-${getDaysInMonth(
+          new Date(year, month - 1)
+        )}`;
+
+        let query = supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', user.id)
+          .gte('date', firstDay)
+          .lte('date', lastDay)
+          .order('date', { ascending: false });
+
+        if (type && type !== 'all') {
+          query = query.eq('type', type);
+        }
+
+        const { data, error: fetchError } = await query;
+
+        if (fetchError) {
+          setError(fetchError.message);
+        } else {
+          setTransactions((data as Transaction[]) ?? []);
+        }
+      } finally {
         setLoading(false);
-        return;
       }
-
-      const firstDay = `${year}-${String(month).padStart(2, '0')}-01`;
-      const lastDay = `${year}-${String(month).padStart(2, '0')}-${getDaysInMonth(
-        new Date(year, month - 1)
-      )}`;
-
-      let query = supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('date', firstDay)
-        .lte('date', lastDay)
-        .order('date', { ascending: false });
-
-      if (type && type !== 'all') {
-        query = query.eq('type', type);
-      }
-
-      const { data, error: fetchError } = await query;
-
-      if (fetchError) {
-        setError(fetchError.message);
-      } else {
-        setTransactions((data as Transaction[]) ?? []);
-      }
-      setLoading(false);
     },
     []
   );
 
   const addTransaction = useCallback(async (formData: TransactionFormData): Promise<void> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) throw new Error('Session expired. Please log in again.');
 
-    const { error: insertError } = await supabase.from('transactions').insert({
+    const { data, error: insertError } = await supabase.from('transactions').insert({
       user_id: user.id,
       type: formData.type,
       amount: parseFloat(formData.amount),
       category: formData.category,
       date: formData.date,
       note: formData.note.trim() || null,
-    });
+    }).select();
 
     if (insertError) throw new Error(insertError.message);
+    if (!data || data.length === 0) throw new Error('Failed to add transaction. Please log in again.');
   }, []);
 
   const deleteTransaction = useCallback(async (id: string): Promise<void> => {

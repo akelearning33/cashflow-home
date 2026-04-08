@@ -124,10 +124,10 @@ export function TransactionsPage() {
           {/* Expense / Income / All tabs */}
           <div className="flex border-b border-gray-100">
             {([
-              { value: 'expense', label: 'Expenses' },
-              { value: 'income',  label: 'Income'   },
-              { value: 'all',     label: 'All'       },
-            ] as { value: FilterType; label: string }[]).map(({ value, label }) => (
+              { value: 'expense', label: 'Expenses', indicator: '–', indicatorClass: 'text-red-500' },
+              { value: 'income',  label: 'Income',   indicator: '+', indicatorClass: 'text-green-500' },
+              { value: 'all',     label: 'All',      indicator: null, indicatorClass: '' },
+            ] as { value: FilterType; label: string; indicator: string | null; indicatorClass: string }[]).map(({ value, label, indicator, indicatorClass }) => (
               <button
                 key={value}
                 onClick={() => { setTypeFilter(value); setExpandedCategory(null); }}
@@ -141,6 +141,7 @@ export function TransactionsPage() {
                     : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
+                {indicator && <span className={`mr-1 ${indicatorClass}`}>{indicator}</span>}
                 {label}
               </button>
             ))}
@@ -242,7 +243,10 @@ export function TransactionsPage() {
                       <span className="text-sm text-gray-400 w-10 text-right">{g.pct}%</span>
 
                       {/* Amount */}
-                      <span className="text-sm font-semibold text-gray-800 w-28 text-right">
+                      <span className={`text-sm font-semibold w-28 text-right ${
+                        g.items[0]?.type === 'income' ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {g.items[0]?.type === 'income' ? '+' : '–'}
                         {formatCurrency(g.amount)}
                       </span>
 

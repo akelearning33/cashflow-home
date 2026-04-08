@@ -1,13 +1,29 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { UserPlus, Trash2, ToggleLeft, ToggleRight, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { UserPlus, Trash2, ToggleLeft, ToggleRight, ShieldCheck, Tag, Plus, Pencil, Check, X } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { useAdmin } from '../hooks/useAdmin';
-import type { UserRole } from '../types';
+import { useCategories } from '../hooks/useCategories';
+import type { UserRole, TransactionType } from '../types';
 import { formatDate } from '../utils/formatDate';
+
+const CATEGORY_COLORS: Record<string, string> = {
+  Food: '#f97316', Transport: '#3b82f6', Utilities: '#eab308',
+  Healthcare: '#ec4899', Shopping: '#a855f7', Entertainment: '#14b8a6',
+  Salary: '#22c55e', Bonus: '#10b981', Freelance: '#06b6d4', Other: '#9ca3af',
+};
+const FALLBACK_COLORS = [
+  '#f97316', '#3b82f6', '#eab308', '#ec4899', '#a855f7',
+  '#14b8a6', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16',
+];
+function getCategoryColor(name: string, index: number) {
+  return CATEGORY_COLORS[name] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+}
 
 export function AdminPage() {
   const { users, loading, error, fetchUsers, updateUserRole, toggleUserActive, deleteUser, inviteUser } =
     useAdmin();
+  const { categories, loading: catLoading, error: catError, fetchCategories, addCategory, updateCategory, deleteCategory } =
+    useCategories();
 
   // Invite form state
   const [fullName, setFullName] = useState('');
@@ -17,11 +33,20 @@ export function AdminPage() {
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState('');
 
-  useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+  // Category state
+  const [catTab, setCatTab] = useState<TransactionType>('expense');
+  const [newCatName, setNewCatName] = useState('');
+  const [addCatLoading, setAddCatLoading] = useState(false);
+  const [addCatError, setAddCatError] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [editCatLoading, setEditCatLoading] = useState(false);
+  const [editCatError, setEditCatError] = useState('');
 
-  async function handleInvite(e: FormEvent) {
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  useEffect(() => { fetchCategories(); }, [fetchCategories]);
+
+  async function handleInvite(e: React.SyntheticEvent) {
     e.preventDefault();
     setInviteError('');
     setInviteSuccess('');
@@ -58,7 +83,7 @@ export function AdminPage() {
     }
   }
 
-  async function handleDelete(id: string, name: string) {
+  async function handleDeleteUser(id: string, name: string) {
     if (!window.confirm(`Delete user "${name}"? This cannot be undone.`)) return;
     try {
       await deleteUser(id);
@@ -68,13 +93,71 @@ export function AdminPage() {
     }
   }
 
+  async function handleAddCategory(e: React.SyntheticEvent) {
+    e.preventDefault();
+    const name = newCatName.trim();
+    if (!name) return;
+    setAddCatError('');
+    setAddCatLoading(true);
+    try {
+      await addCategory(catTab, name);
+      setNewCatName('');
+      fetchCategories();
+    } catch (err) {
+      setAddCatError(err instanceof Error ? err.message : 'Failed to add category');
+    } finally {
+      setAddCatLoading(false);
+    }
+  }
+
+  async function handleDeleteCategory(id: string, name: string) {
+    if (!window.confirm(`Delete category "${name}"?`)) return;
+    try {
+      await deleteCategory(id);
+      if (editingId === id) setEditingId(null);
+      fetchCategories();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete category');
+    }
+  }
+
+  function startEdit(id: string, name: string) {
+    setEditingId(id);
+    setEditingName(name);
+    setEditCatError('');
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditingName('');
+    setEditCatError('');
+  }
+
+  async function handleSaveEdit(id: string) {
+    const name = editingName.trim();
+    if (!name) return;
+    setEditCatError('');
+    setEditCatLoading(true);
+    try {
+      await updateCategory(id, name);
+      setEditingId(null);
+      fetchCategories();
+    } catch (err) {
+      setEditCatError(err instanceof Error ? err.message : 'Failed to update category');
+    } finally {
+      setEditCatLoading(false);
+    }
+  }
+
+  const visibleCategories = categories.filter((c) => c.type === catTab);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
         <div className="flex items-center gap-2">
           <ShieldCheck className="text-indigo-600" size={22} />
-          <h1 className="text-xl font-bold text-gray-900">User Management</h1>
+          <h1 className="text-xl font-bold text-gray-900">Admin</h1>
         </div>
 
         {/* Invite user form */}
@@ -144,7 +227,6 @@ export function AdminPage() {
               {error}
             </p>
           )}
-
           {loading ? (
             <div className="p-4 space-y-3">
               {[...Array(3)].map((_, i) => (
@@ -173,10 +255,7 @@ export function AdminPage() {
                     </tr>
                   ) : (
                     users.map((user) => (
-                      <tr
-                        key={user.id}
-                        className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
-                      >
+                      <tr key={user.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3 font-medium text-gray-800">{user.full_name}</td>
                         <td className="px-4 py-3 text-gray-600">{user.email}</td>
                         <td className="px-4 py-3">
@@ -196,20 +275,14 @@ export function AdminPage() {
                               user.is_active ? 'text-green-600' : 'text-gray-400'
                             }`}
                           >
-                            {user.is_active ? (
-                              <ToggleRight size={18} />
-                            ) : (
-                              <ToggleLeft size={18} />
-                            )}
+                            {user.is_active ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
                             {user.is_active ? 'Active' : 'Inactive'}
                           </button>
                         </td>
-                        <td className="px-4 py-3 text-gray-500">
-                          {formatDate(user.created_at)}
-                        </td>
+                        <td className="px-4 py-3 text-gray-500">{formatDate(user.created_at)}</td>
                         <td className="px-4 py-3">
                           <button
-                            onClick={() => handleDelete(user.id, user.full_name)}
+                            onClick={() => handleDeleteUser(user.id, user.full_name)}
                             className="text-gray-300 hover:text-red-500 transition-colors"
                             title="Delete user"
                           >
@@ -222,6 +295,143 @@ export function AdminPage() {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+
+        {/* Categories management */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Tag size={18} className="text-indigo-600" />
+            <h2 className="text-sm font-semibold text-gray-700">Categories</h2>
+          </div>
+
+          {/* Expense / Income tabs */}
+          <div className="flex border border-gray-200 rounded-lg overflow-hidden mb-4 w-fit">
+            {(['expense', 'income'] as TransactionType[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => { setCatTab(t); setAddCatError(''); cancelEdit(); }}
+                className={`px-5 py-1.5 text-sm font-medium transition-colors capitalize ${
+                  catTab === t
+                    ? t === 'expense'
+                      ? 'bg-red-500 text-white'
+                      : 'bg-green-500 text-white'
+                    : 'bg-white text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {t === 'expense' ? 'Expense' : 'Income'}
+              </button>
+            ))}
+          </div>
+
+          {catError && (
+            <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
+              {catError}
+            </p>
+          )}
+
+          {/* Category list */}
+          {catLoading ? (
+            <div className="space-y-2 mb-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-9 bg-gray-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-1.5 mb-4">
+              {visibleCategories.length === 0 ? (
+                <p className="text-sm text-gray-400 py-2">No categories yet.</p>
+              ) : (
+                visibleCategories.map((c, i) => (
+                  <div key={c.id} className="rounded-lg">
+                    {editingId === c.id ? (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-lg">
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: getCategoryColor(c.name, i) }}
+                        />
+                        <input
+                          autoFocus
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEdit(c.id);
+                            if (e.key === 'Escape') cancelEdit();
+                          }}
+                          className="flex-1 border border-indigo-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          maxLength={50}
+                        />
+                        <button
+                          onClick={() => handleSaveEdit(c.id)}
+                          disabled={editCatLoading || !editingName.trim()}
+                          className="text-indigo-600 hover:text-indigo-800 disabled:opacity-40 transition-colors"
+                          title="Save"
+                        >
+                          <Check size={15} />
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="text-gray-400 hover:text-gray-600 transition-colors"
+                          title="Cancel"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 group">
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: getCategoryColor(c.name, i) }}
+                        />
+                        <span className="flex-1 text-sm text-gray-700">{c.name}</span>
+                        <button
+                          onClick={() => startEdit(c.id, c.name)}
+                          className="text-gray-300 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100"
+                          title="Edit category"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCategory(c.id, c.name)}
+                          className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                          title="Delete category"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                    {editingId === c.id && editCatError && (
+                      <p className="text-red-600 text-xs px-3 pt-1">{editCatError}</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Add category form */}
+          <form onSubmit={handleAddCategory} className="flex gap-2">
+            <input
+              type="text"
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              placeholder={`New ${catTab} category…`}
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              maxLength={50}
+            />
+            <button
+              type="submit"
+              disabled={addCatLoading || !newCatName.trim()}
+              className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              <Plus size={15} />
+              Add
+            </button>
+          </form>
+          {addCatError && (
+            <p className="mt-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {addCatError}
+            </p>
           )}
         </div>
       </main>
