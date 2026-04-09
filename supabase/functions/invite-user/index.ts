@@ -32,10 +32,19 @@ serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Verify caller JWT using admin client
+    // JWT is already verified by Supabase gateway — decode payload to get caller ID
     const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user: callerUser }, error: userError } = await adminClient.auth.getUser(jwt);
-    if (userError || !callerUser) {
+    const parts = jwt.split('.');
+    if (parts.length !== 3) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64));
+    const callerId = payload.sub as string;
+    if (!callerId) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
@@ -46,7 +55,7 @@ serve(async (req: Request) => {
     const { data: callerProfile } = await adminClient
       .from('profiles')
       .select('role')
-      .eq('id', callerUser.id)
+      .eq('id', callerId)
       .single();
 
     if (callerProfile?.role !== 'admin') {

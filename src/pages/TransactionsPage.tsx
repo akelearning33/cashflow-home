@@ -59,21 +59,22 @@ export function TransactionsPage() {
   const grouped = useMemo(() => {
     const map = new Map<string, number>();
     for (const t of transactions) {
-      map.set(t.category, (map.get(t.category) ?? 0) + Number(t.amount));
+      const signed = t.type === 'income' ? Number(t.amount) : -Number(t.amount);
+      map.set(t.category, (map.get(t.category) ?? 0) + signed);
     }
-    const total = Array.from(map.values()).reduce((s, v) => s + v, 0);
+    const absTotal = Array.from(map.values()).reduce((s, v) => s + Math.abs(v), 0);
     return Array.from(map.entries())
       .map(([category, amount]) => ({
         category,
         amount,
-        pct: total > 0 ? Math.round((amount / total) * 100) : 0,
+        pct: absTotal > 0 ? Math.round((Math.abs(amount) / absTotal) * 100) : 0,
         items: transactions.filter((t) => t.category === category),
       }))
-      .sort((a, b) => b.amount - a.amount);
+      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
   }, [transactions]);
 
   const total = useMemo(
-    () => transactions.reduce((s, t) => s + Number(t.amount), 0),
+    () => transactions.reduce((s, t) => s + (t.type === 'income' ? Number(t.amount) : -Number(t.amount)), 0),
     [transactions]
   );
 
@@ -195,7 +196,9 @@ export function TransactionsPage() {
             <>
               {/* Total */}
               <div className="px-4 pt-4 pb-2">
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(total)}</p>
+                <p className={`text-2xl font-bold ${total >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                  {total < 0 ? '–' : ''}{formatCurrency(Math.abs(total))}
+                </p>
                 <p className="text-xs text-gray-400 mt-0.5">{monthLabel} {year}</p>
               </div>
 
@@ -244,10 +247,10 @@ export function TransactionsPage() {
 
                       {/* Amount */}
                       <span className={`text-sm font-semibold w-28 text-right ${
-                        g.items[0]?.type === 'income' ? 'text-green-600' : 'text-red-600'
+                        g.amount >= 0 ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        {g.items[0]?.type === 'income' ? '+' : '–'}
-                        {formatCurrency(g.amount)}
+                        {g.amount >= 0 ? '+' : '–'}
+                        {formatCurrency(Math.abs(g.amount))}
                       </span>
 
                       {/* Expand icon */}
