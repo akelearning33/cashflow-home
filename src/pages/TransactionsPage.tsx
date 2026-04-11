@@ -5,12 +5,10 @@ import { TransactionItem } from '../components/TransactionItem';
 import { TransactionForm } from '../components/TransactionForm';
 import { useTransactions } from '../hooks/useTransactions';
 import { formatCurrency } from '../utils/formatCurrency';
+import { getCategoryColor } from '../utils/categoryColors';
 import type { TransactionType } from '../types';
 
-const CURRENT_YEAR = new Date().getFullYear();
-const CURRENT_MONTH = new Date().getMonth() + 1;
-
-const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
+const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 const MONTHS = [
   { value: 1, label: 'January' }, { value: 2, label: 'February' },
   { value: 3, label: 'March' }, { value: 4, label: 'April' },
@@ -20,33 +18,11 @@ const MONTHS = [
   { value: 11, label: 'November' }, { value: 12, label: 'December' },
 ];
 
-const CATEGORY_COLORS: Record<string, string> = {
-  Food: '#f97316',
-  Transport: '#3b82f6',
-  Utilities: '#eab308',
-  Healthcare: '#ec4899',
-  Shopping: '#a855f7',
-  Entertainment: '#14b8a6',
-  Salary: '#22c55e',
-  Bonus: '#10b981',
-  Freelance: '#06b6d4',
-  Other: '#9ca3af',
-};
-
-const FALLBACK_COLORS = [
-  '#f97316', '#3b82f6', '#eab308', '#ec4899', '#a855f7',
-  '#14b8a6', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16',
-];
-
-function getCategoryColor(category: string, index: number): string {
-  return CATEGORY_COLORS[category] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
-}
-
 type FilterType = TransactionType | 'all';
 
 export function TransactionsPage() {
-  const [year, setYear] = useState(CURRENT_YEAR);
-  const [month, setMonth] = useState(CURRENT_MONTH);
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [month, setMonth] = useState(() => new Date().getMonth() + 1);
   const [typeFilter, setTypeFilter] = useState<FilterType>('expense');
   const [showForm, setShowForm] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
@@ -82,8 +58,9 @@ export function TransactionsPage() {
     try {
       await deleteTransaction(id);
       fetchTransactions(year, month, typeFilter);
-    } catch {
+    } catch (err) {
       alert('Failed to delete transaction. Please try again.');
+      throw err;
     }
   }
 
@@ -125,8 +102,8 @@ export function TransactionsPage() {
           {/* Expense / Income / All tabs */}
           <div className="flex border-b border-gray-100">
             {([
-              { value: 'expense', label: 'Expenses', indicator: '–', indicatorClass: 'text-red-500' },
-              { value: 'income',  label: 'Income',   indicator: '+', indicatorClass: 'text-green-500' },
+              { value: 'expense', label: 'Expenses', indicator: '', indicatorClass: 'text-red-500' },
+              { value: 'income',  label: 'Income',   indicator: '', indicatorClass: 'text-green-500' },
               { value: 'all',     label: 'All',      indicator: null, indicatorClass: '' },
             ] as { value: FilterType; label: string; indicator: string | null; indicatorClass: string }[]).map(({ value, label, indicator, indicatorClass }) => (
               <button
@@ -196,8 +173,8 @@ export function TransactionsPage() {
             <>
               {/* Total */}
               <div className="px-4 pt-4 pb-2">
-                <p className={`text-2xl font-bold ${total >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-                  {total < 0 ? '–' : ''}{formatCurrency(Math.abs(total))}
+                <p className={`text-2xl font-bold ${total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {total < 0 ? '–' : '+'}{formatCurrency(Math.abs(total))}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">{monthLabel} {year}</p>
               </div>

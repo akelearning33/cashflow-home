@@ -5,21 +5,11 @@ import { useAdmin } from '../hooks/useAdmin';
 import { useCategories } from '../hooks/useCategories';
 import type { UserRole, TransactionType } from '../types';
 import { formatDate } from '../utils/formatDate';
-
-const CATEGORY_COLORS: Record<string, string> = {
-  Food: '#f97316', Transport: '#3b82f6', Utilities: '#eab308',
-  Healthcare: '#ec4899', Shopping: '#a855f7', Entertainment: '#14b8a6',
-  Salary: '#22c55e', Bonus: '#10b981', Freelance: '#06b6d4', Other: '#9ca3af',
-};
-const FALLBACK_COLORS = [
-  '#f97316', '#3b82f6', '#eab308', '#ec4899', '#a855f7',
-  '#14b8a6', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16',
-];
-function getCategoryColor(name: string, index: number) {
-  return CATEGORY_COLORS[name] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
-}
+import { getCategoryColor } from '../utils/categoryColors';
+import { useAuth } from '../hooks/useAuth';
 
 export function AdminPage() {
+  const { user: currentUser } = useAuth();
   const { users, loading, error, fetchUsers, updateUserRole, toggleUserActive, deleteUser, inviteUser } =
     useAdmin();
   const { categories, loading: catLoading, error: catError, fetchCategories, addCategory, updateCategory, deleteCategory } =
@@ -32,6 +22,11 @@ export function AdminPage() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState('');
+
+  // User action loading guards
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
 
   // Category state
   const [catTab, setCatTab] = useState<TransactionType>('expense');
@@ -66,30 +61,44 @@ export function AdminPage() {
   }
 
   async function handleRoleChange(id: string, newRole: UserRole) {
+    if (updatingRoleId) return;
+    if (id === currentUser?.id) { alert("You can't change your own role."); return; }
+    setUpdatingRoleId(id);
     try {
       await updateUserRole(id, newRole);
       fetchUsers();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to update role');
+    } finally {
+      setUpdatingRoleId(null);
     }
   }
 
   async function handleToggleActive(id: string, current: boolean) {
+    if (togglingId) return;
+    setTogglingId(id);
     try {
       await toggleUserActive(id, !current);
       fetchUsers();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to toggle status');
+    } finally {
+      setTogglingId(null);
     }
   }
 
   async function handleDeleteUser(id: string, name: string) {
+    if (deletingUserId) return;
+    if (id === currentUser?.id) { alert("You can't delete your own account."); return; }
     if (!window.confirm(`Delete user "${name}"? This cannot be undone.`)) return;
+    setDeletingUserId(id);
     try {
       await deleteUser(id);
       fetchUsers();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to delete user');
+    } finally {
+      setDeletingUserId(null);
     }
   }
 
@@ -262,7 +271,8 @@ export function AdminPage() {
                           <select
                             value={user.role}
                             onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
-                            className="border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            disabled={updatingRoleId === user.id}
+                            className="border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
                           >
                             <option value="member">Member</option>
                             <option value="admin">Admin</option>
@@ -271,7 +281,8 @@ export function AdminPage() {
                         <td className="px-4 py-3">
                           <button
                             onClick={() => handleToggleActive(user.id, user.is_active)}
-                            className={`flex items-center gap-1 text-xs font-medium ${
+                            disabled={togglingId === user.id}
+                            className={`flex items-center gap-1 text-xs font-medium disabled:opacity-50 ${
                               user.is_active ? 'text-green-600' : 'text-gray-400'
                             }`}
                           >
@@ -283,7 +294,8 @@ export function AdminPage() {
                         <td className="px-4 py-3">
                           <button
                             onClick={() => handleDeleteUser(user.id, user.full_name)}
-                            className="text-gray-300 hover:text-red-500 transition-colors"
+                            disabled={deletingUserId === user.id}
+                            className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-50"
                             title="Delete user"
                           >
                             <Trash2 size={16} />
@@ -386,14 +398,14 @@ export function AdminPage() {
                         <span className="flex-1 text-sm text-gray-700">{c.name}</span>
                         <button
                           onClick={() => startEdit(c.id, c.name)}
-                          className="text-gray-300 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100"
+                          className="text-gray-300 hover:text-indigo-500 transition-colors"
                           title="Edit category"
                         >
                           <Pencil size={13} />
                         </button>
                         <button
                           onClick={() => handleDeleteCategory(c.id, c.name)}
-                          className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                          className="text-gray-300 hover:text-red-500 transition-colors"
                           title="Delete category"
                         >
                           <Trash2 size={14} />

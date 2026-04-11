@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from '@supabase/supabase-js';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import type { AuthChangeEvent, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 import type { Profile } from '../types';
 
@@ -29,35 +29,75 @@ async function fetchProfile(userId: string): Promise<Profile | null> {
   return data as Profile;
 }
 
+function clearClientStorage() {
+  try {
+    localStorage.clear();
+  } catch {
+    // Ignore storage access failures in restricted browser contexts.
+  }
+
+  try {
+    sessionStorage.clear();
+  } catch {
+    // Ignore storage access failures in restricted browser contexts.
+  }
+}
+
 export function useAuthState(): AuthState {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const hadAuthenticatedSession = useRef(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const p = await fetchProfile(session.user.id);
-        setProfile(p);
+    let isMounted = true;
+
+    const syncAuthState = (sessionUser: User | null, event?: AuthChangeEvent) => {
+      setUser(sessionUser);
+
+      if (!sessionUser) {
+        const shouldForceLogoutFlow = event === 'SIGNED_OUT' && hadAuthenticatedSession.current;
+
+        if (shouldForceLogoutFlow) {
+          clearClientStorage();
+          if (window.location.pathname !== '/login') {
+            window.location.assign('/login');
+          }
+        }
+
+        setProfile(null);
+        setLoading(false);
+        return;
       }
+
+      hadAuthenticatedSession.current = true;
       setLoading(false);
+      void fetchProfile(sessionUser.id).then((p) => {
+        if (!isMounted) return;
+        setProfile(p);
+      });
+    };
+
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (!isMounted) return;
+        syncAuthState(session?.user ?? null, 'INITIAL_SESSION');
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setLoading(false);
+      });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+      syncAuthState(session?.user ?? null, event);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const p = await fetchProfile(session.user.id);
-          setProfile(p);
-        } else {
-          setProfile(null);
-        }
-        setLoading(false);
-      }
-    );
-
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   async function signIn(email: string, password: string): Promise<{ error: string | null }> {
@@ -68,6 +108,7 @@ export function useAuthState(): AuthState {
 
   async function signOut(): Promise<void> {
     await supabase.auth.signOut();
+    clearClientStorage();
   }
 
   return { user, profile, loading, signIn, signOut };

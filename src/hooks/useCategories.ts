@@ -10,16 +10,21 @@ export function useCategories() {
   const fetchCategories = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: fetchError } = await supabase
-      .from('categories')
-      .select('id, type, name')
-      .order('name');
-    setLoading(false);
-    if (fetchError) {
-      setError(fetchError.message);
-      return;
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('categories')
+        .select('id, type, name')
+        .order('name');
+      if (fetchError) {
+        setError(fetchError.message);
+        return;
+      }
+      setCategories((data ?? []) as Category[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load categories');
+    } finally {
+      setLoading(false);
     }
-    setCategories((data ?? []) as Category[]);
   }, []);
 
   const addCategory = useCallback(async (type: TransactionType, name: string) => {

@@ -21,17 +21,22 @@ export function useAdmin(): UseAdminReturn {
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: fetchError } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, role, is_active, created_at')
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role, is_active, created_at')
+        .order('created_at', { ascending: false });
 
-    if (fetchError) {
-      setError(fetchError.message);
-    } else {
-      setUsers((data as AdminUser[]) ?? []);
+      if (fetchError) {
+        setError(fetchError.message);
+      } else {
+        setUsers((data as AdminUser[]) ?? []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load users');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   const updateUserRole = useCallback(async (id: string, role: UserRole): Promise<void> => {

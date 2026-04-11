@@ -6,10 +6,7 @@ import { Chart } from '../components/Chart';
 import { TransactionForm } from '../components/TransactionForm';
 import { useTransactions } from '../hooks/useTransactions';
 
-const CURRENT_YEAR = new Date().getFullYear();
-const CURRENT_MONTH = new Date().getMonth() + 1;
-
-const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
+const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 const MONTHS = [
   { value: 1, label: 'January' }, { value: 2, label: 'February' },
   { value: 3, label: 'March' }, { value: 4, label: 'April' },
@@ -20,10 +17,11 @@ const MONTHS = [
 ];
 
 export function DashboardPage() {
-  const [year, setYear] = useState(CURRENT_YEAR);
-  const [month, setMonth] = useState(CURRENT_MONTH);
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [month, setMonth] = useState(() => new Date().getMonth() + 1);
   const [showForm, setShowForm] = useState(false);
-  const { transactions, error, fetchTransactions } = useTransactions();
+  const [chartRefreshToken, setChartRefreshToken] = useState(0);
+  const { transactions, loading, error, fetchTransactions } = useTransactions();
 
   useEffect(() => {
     fetchTransactions(year, month);
@@ -32,6 +30,7 @@ export function DashboardPage() {
   function handleTransactionAdded() {
     setShowForm(false);
     fetchTransactions(year, month);
+    setChartRefreshToken((v) => v + 1);
   }
 
   return (
@@ -56,7 +55,9 @@ export function DashboardPage() {
             {/* Year selector */}
             <select
               value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
+              onChange={
+                (e) => setYear(Number(e.target.value))
+              }
               className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               {YEARS.map((y) => (
@@ -90,10 +91,18 @@ export function DashboardPage() {
         )}
 
         {/* Summary cards */}
-        <Dashboard transactions={transactions} selectedYear={year} selectedMonth={month} />
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl border border-gray-200 p-4 h-20 animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <Dashboard transactions={transactions} selectedYear={year} selectedMonth={month} />
+        )}
 
         {/* Chart */}
-        <Chart year={year} />
+        <Chart key={`${year}-${month}-${chartRefreshToken}`} year={year} month={month} refreshToken={chartRefreshToken} />
       </main>
     </div>
   );

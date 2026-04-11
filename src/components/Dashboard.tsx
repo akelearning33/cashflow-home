@@ -36,7 +36,7 @@ export function Dashboard({ transactions, selectedYear, selectedMonth }: Props) 
               <TrendingUp size={16} className="text-green-600" />
             </div>
           </div>
-          <p className="text-xl font-bold text-green-600">{formatCurrency(totalIncome)}</p>
+          <p className="text-xl font-bold text-green-600">+{formatCurrency(totalIncome)}</p>
         </div>
 
         {/* Expense */}
@@ -49,7 +49,7 @@ export function Dashboard({ transactions, selectedYear, selectedMonth }: Props) 
               <TrendingDown size={16} className="text-red-600" />
             </div>
           </div>
-          <p className="text-xl font-bold text-red-600">{formatCurrency(totalExpense)}</p>
+          <p className="text-xl font-bold text-red-600">-{formatCurrency(totalExpense)}</p>
         </div>
 
         {/* Net Balance */}
@@ -71,10 +71,10 @@ export function Dashboard({ transactions, selectedYear, selectedMonth }: Props) 
           </div>
           <p
             className={`text-xl font-bold ${
-              netBalance >= 0 ? 'text-indigo-600' : 'text-orange-600'
+              netBalance >= 0 ? 'text-green-600' : 'text-red-600'
             }`}
           >
-            {formatCurrency(netBalance)}
+            {netBalance < 0 ? '-' : '+'}{formatCurrency(Math.abs(netBalance))}
           </p>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { Transaction } from '../types';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -5,13 +6,21 @@ import { formatDate } from '../utils/formatDate';
 
 interface Props {
   transaction: Transaction;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
 }
 
 export function TransactionItem({ transaction, onDelete }: Props) {
-  function handleDelete() {
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (deleting) return;
     if (window.confirm(`Delete this ${transaction.type} of ${formatCurrency(transaction.amount)}?`)) {
-      onDelete(transaction.id);
+      setDeleting(true);
+      try {
+        await onDelete(transaction.id);
+      } catch {
+        setDeleting(false);
+      }
     }
   }
 
@@ -52,7 +61,8 @@ export function TransactionItem({ transaction, onDelete }: Props) {
       {/* Delete */}
       <button
         onClick={handleDelete}
-        className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0 p-1"
+        disabled={deleting}
+        className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0 p-1 disabled:opacity-50"
         title="Delete transaction"
       >
         <Trash2 size={15} />

@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { Wallet } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 export function LoginPage() {
-  const { signIn } = useAuth();
+  const { user, loading: authLoading, signIn } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,6 +23,8 @@ export function LoginPage() {
       navigate('/');
     }
   }
+
+  if (!authLoading && user) return <Navigate to="/" replace />;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">

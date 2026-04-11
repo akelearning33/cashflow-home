@@ -3,7 +3,7 @@ import { TransactionItem } from './TransactionItem';
 
 interface Props {
   transactions: Transaction[];
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
   loading: boolean;
 }
 
