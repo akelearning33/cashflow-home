@@ -64,9 +64,12 @@ export function useAdmin(): UseAdminReturn {
 
   const deleteUser = useCallback(async (id: string): Promise<void> => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
+    if (!session?.access_token) throw new Error('Not authenticated');
 
     const res = await supabase.functions.invoke('delete-user', {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
       body: { user_id: id },
     });
 
@@ -75,7 +78,13 @@ export function useAdmin(): UseAdminReturn {
 
   const inviteUser = useCallback(
     async (payload: { full_name: string; email: string; role: UserRole }): Promise<void> => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+
       const res = await supabase.functions.invoke('invite-user', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: payload,
       });
       if (res.error) throw new Error(res.error.message);
