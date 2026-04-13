@@ -70,119 +70,172 @@ export function Dashboard({ transactions, selectedYear, selectedMonth }: Props) 
   }, [selectedYear, transactions]);
 
   return (
-    <div>
-      <p className="text-sm text-gray-500 mb-3">
-        Summary for {formatMonthYear(selectedYear, selectedMonth)}
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Income */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              Total Income
-            </span>
-            <div className="bg-green-100 p-1.5 rounded-lg">
-              <TrendingUp size={16} className="text-green-600" />
-            </div>
-          </div>
-          <p className="text-xl font-bold text-green-600">+{formatCurrency(totalIncome)}</p>
+    <div className="space-y-8">
+      {/* Monthly Section */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-800">
+            Monthly Summary
+          </h2>
+          <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+            {formatMonthYear(selectedYear, selectedMonth)}
+          </span>
         </div>
-
-        {/* Expense */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              Total Expense
-            </span>
-            <div className="bg-red-100 p-1.5 rounded-lg">
-              <TrendingDown size={16} className="text-red-600" />
-            </div>
-          </div>
-          <p className="text-xl font-bold text-red-600">-{formatCurrency(totalExpense)}</p>
-        </div>
-
-        {/* Net Balance */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              Net Balance
-            </span>
-            <div
-              className={`p-1.5 rounded-lg ${
-                netBalance >= 0 ? 'bg-indigo-100' : 'bg-orange-100'
-              }`}
-            >
-              <Wallet
-                size={16}
-                className={netBalance >= 0 ? 'text-indigo-600' : 'text-orange-600'}
-              />
-            </div>
-          </div>
-          <p
-            className={`text-xl font-bold ${
-              netBalance >= 0 ? 'text-green-600' : 'text-red-600'
-            }`}
+        
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          {/* Net Balance Card - High Contrast */}
+          <div
+            className="rounded-2xl p-6 md:col-span-2 bg-slate-900 shadow-lg shadow-slate-900/20 flex flex-col justify-between"
+            style={{ animation: 'fadeSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 0ms both' }}
           >
-            {netBalance < 0 ? '-' : '+'}{formatCurrency(Math.abs(netBalance))}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-6">
-        <p className="text-sm text-gray-500 mb-3">
-          Yearly summary for {selectedYear}
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-2xl border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Total Income
-              </span>
-              <div className="bg-green-100 p-1.5 rounded-lg">
-                <TrendingUp size={16} className="text-green-600" />
+            <div className="mb-8 flex items-start justify-between">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Net Balance
+                </span>
+                <p className="text-sm text-slate-500 mt-1">Available funds this month</p>
               </div>
-            </div>
-            <p className="text-xl font-bold text-green-600">+{formatCurrency(yearlyIncome)}</p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Total Expense
-              </span>
-              <div className="bg-red-100 p-1.5 rounded-lg">
-                <TrendingDown size={16} className="text-red-600" />
-              </div>
-            </div>
-            <p className="text-xl font-bold text-red-600">-{formatCurrency(yearlyExpense)}</p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Total Net Balance
-              </span>
-              <div
-                className={`p-1.5 rounded-lg ${
-                  yearlyNetBalance >= 0 ? 'bg-indigo-100' : 'bg-orange-100'
-                }`}
-              >
-                <Wallet
-                  size={16}
-                  className={yearlyNetBalance >= 0 ? 'text-indigo-600' : 'text-orange-600'}
-                />
+              <div className="rounded-xl bg-white/10 p-2.5 text-white backdrop-blur-sm">
+                <Wallet size={20} strokeWidth={2.5} />
               </div>
             </div>
             <p
-              className={`text-xl font-bold ${
-                yearlyNetBalance >= 0 ? 'text-green-600' : 'text-red-600'
+              className={`text-4xl sm:text-5xl font-black tracking-tight ${
+                netBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'
               }`}
             >
-              {yearlyNetBalance < 0 ? '-' : '+'}{formatCurrency(Math.abs(yearlyNetBalance))}
+              {netBalance < 0 ? '-' : '+'}
+              {formatCurrency(Math.abs(netBalance))}
+            </p>
+          </div>
+
+          {/* Total Income Card */}
+          <div 
+            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+            style={{ animation: 'premiumSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 100ms both' }}
+          >
+            <div className="mb-8 flex items-start justify-between">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                Total Income
+              </span>
+              <div className="rounded-xl bg-emerald-50 p-2 text-emerald-600">
+                <TrendingUp size={18} strokeWidth={2.5} />
+              </div>
+            </div>
+            <p className="text-2xl font-extrabold tracking-tight text-emerald-600">
+              +{formatCurrency(totalIncome)}
+            </p>
+          </div>
+
+          {/* Total Expense Card */}
+          <div 
+            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+            style={{ animation: 'premiumSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 150ms both' }}
+          >
+            <div className="mb-8 flex items-start justify-between">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                Total Expense
+              </span>
+              <div className="rounded-xl bg-rose-50 p-2 text-rose-600">
+                <TrendingDown size={18} strokeWidth={2.5} />
+              </div>
+            </div>
+            <p className="text-2xl font-extrabold tracking-tight text-rose-600">
+              -{formatCurrency(totalExpense)}
             </p>
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* Yearly Section */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-800">
+            Yearly Overview
+          </h2>
+          <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+            {selectedYear}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div
+            className="rounded-2xl p-6 md:col-span-2 bg-slate-900 shadow-lg shadow-slate-900/20 flex flex-col justify-between"
+            style={{ animation: 'fadeSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 225ms both' }}
+          >
+            <div className="mb-8 flex items-start justify-between">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Total Net Balance
+                </span>
+                <p className="text-sm text-slate-500 mt-1">Accumulated for {selectedYear}</p>
+              </div>
+              <div className="rounded-xl bg-white/10 p-2.5 text-white backdrop-blur-sm">
+                <Wallet size={20} strokeWidth={2.5} />
+              </div>
+            </div>
+            <p
+              className={`text-4xl sm:text-5xl font-black tracking-tight ${
+                yearlyNetBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              }`}
+            >
+              {yearlyNetBalance < 0 ? '-' : '+'}
+              {formatCurrency(Math.abs(yearlyNetBalance))}
+            </p>
+          </div>
+
+          {/* Yearly Income Card */}
+          <div 
+            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+            style={{ animation: 'premiumSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 250ms both' }}
+          >
+            <div className="mb-8 flex items-start justify-between">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                Total Income
+              </span>
+              <div className="rounded-xl bg-emerald-50 p-2 text-emerald-600">
+                <TrendingUp size={18} strokeWidth={2.5} />
+              </div>
+            </div>
+            <p className="text-2xl font-extrabold tracking-tight text-emerald-600">
+              +{formatCurrency(yearlyIncome)}
+            </p>
+          </div>
+
+          {/* Yearly Expense Card */}
+          <div 
+            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+            style={{ animation: 'premiumSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both' }}
+          >
+            <div className="mb-8 flex items-start justify-between">
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                Total Expense
+              </span>
+              <div className="rounded-xl bg-rose-50 p-2 text-rose-600">
+                <TrendingDown size={18} strokeWidth={2.5} />
+              </div>
+            </div>
+            <p className="text-2xl font-extrabold tracking-tight text-rose-600">
+              -{formatCurrency(yearlyExpense)}
+            </p>
+          </div>
+        </div>
+      </section>
+      
+      <style>
+        {`
+          @keyframes fadeSlideUp {
+            from {
+              opacity: 0;
+              transform: translateY(16px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+        `}
+      </style>
     </div>
   );
 }
