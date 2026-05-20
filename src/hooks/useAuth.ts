@@ -8,6 +8,7 @@ interface AuthState {
   profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -106,10 +107,21 @@ export function useAuthState(): AuthState {
     return { error: null };
   }
 
+  async function signInWithGoogle(): Promise<{ error: string | null }> {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) return { error: error.message };
+    return { error: null };
+  }
+
   async function signOut(): Promise<void> {
     await supabase.auth.signOut();
     clearClientStorage();
   }
 
-  return { user, profile, loading, signIn, signOut };
+  return { user, profile, loading, signIn, signInWithGoogle, signOut };
 }
