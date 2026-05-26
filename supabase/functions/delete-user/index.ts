@@ -1,10 +1,10 @@
-// @ts-nocheck
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-authorization',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 const FUNCTION_NAME = 'delete-user';
@@ -31,7 +31,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const authHeader = req.headers.get('Authorization');
+    const authHeader = req.headers.get('x-user-authorization') ?? req.headers.get('Authorization');
     logEvent('auth_header_received', {
       requestId,
       hasAuthHeader: Boolean(authHeader),
@@ -55,8 +55,20 @@ serve(async (req: Request) => {
       });
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceRoleKey) {
+      logEvent('missing_env', {
+        requestId,
+        hasSupabaseUrl: Boolean(supabaseUrl),
+        hasServiceRoleKey: Boolean(serviceRoleKey),
+      });
+      return new Response(JSON.stringify({ error: 'Delete user service is not configured' }), {
+        status: 500,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     // Verify caller token and extract caller id.
@@ -88,7 +100,18 @@ serve(async (req: Request) => {
     }
 
     // Parse body
-    const { user_id } = await req.json();
+    let payload;
+    try {
+      payload = await req.json();
+    } catch {
+      logEvent('payload_invalid_json', { requestId });
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const user_id = String(payload.user_id ?? '').trim();
     if (!user_id) {
       logEvent('payload_invalid_missing_user_id', { requestId });
       return new Response(JSON.stringify({ error: 'Missing user_id' }), {
@@ -109,6 +132,30 @@ serve(async (req: Request) => {
     // Delete auth user (profile cascades via FK)
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(user_id);
     if (deleteError) {
+      const userWasAlreadyMissing =
+        deleteError.status === 404 || deleteError.message.toLowerCase().includes('not found');
+
+      if (userWasAlreadyMissing) {
+        const { error: profileDeleteError } = await adminClient
+          .from('profiles')
+          .delete()
+          .eq('id', user_id);
+
+        if (!profileDeleteError) {
+          logEvent('delete_profile_only_success', { requestId, callerId, targetUserId: user_id });
+          return new Response(JSON.stringify({ message: 'User profile deleted successfully' }), {
+            status: 200,
+            headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+          });
+        }
+
+        logEvent('delete_profile_only_failed', {
+          requestId,
+          targetUserId: user_id,
+          reason: profileDeleteError.message,
+        });
+      }
+
       logEvent('delete_failed', { requestId, targetUserId: user_id, reason: deleteError.message });
       return new Response(JSON.stringify({ error: deleteError.message }), {
         status: 400,

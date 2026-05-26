@@ -27,6 +27,8 @@ export function AdminPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
+  const [userActionError, setUserActionError] = useState('');
+  const [userActionSuccess, setUserActionSuccess] = useState('');
 
   // Category state
   const [catTab, setCatTab] = useState<TransactionType>('expense');
@@ -43,16 +45,20 @@ export function AdminPage() {
 
   async function handleInvite(e: React.SyntheticEvent) {
     e.preventDefault();
+    const trimmedFullName = fullName.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!trimmedFullName || !normalizedEmail) return;
+
     setInviteError('');
     setInviteSuccess('');
     setInviteLoading(true);
     try {
-      await inviteUser({ full_name: fullName, email, role });
-      setInviteSuccess(`Invitation sent to ${email}`);
+      await inviteUser({ full_name: trimmedFullName, email: normalizedEmail, role });
+      setInviteSuccess(`Invitation sent to ${normalizedEmail}`);
       setFullName('');
       setEmail('');
       setRole('member');
-      fetchUsers();
+      await fetchUsers();
     } catch (err) {
       setInviteError(err instanceof Error ? err.message : 'Failed to invite user');
     } finally {
@@ -63,12 +69,14 @@ export function AdminPage() {
   async function handleRoleChange(id: string, newRole: UserRole) {
     if (updatingRoleId) return;
     if (id === currentUser?.id) { alert("You can't change your own role."); return; }
+    setUserActionError('');
+    setUserActionSuccess('');
     setUpdatingRoleId(id);
     try {
       await updateUserRole(id, newRole);
-      fetchUsers();
+      await fetchUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update role');
+      setUserActionError(err instanceof Error ? err.message : 'Failed to update role');
     } finally {
       setUpdatingRoleId(null);
     }
@@ -76,27 +84,33 @@ export function AdminPage() {
 
   async function handleToggleActive(id: string, current: boolean) {
     if (togglingId) return;
+    setUserActionError('');
+    setUserActionSuccess('');
     setTogglingId(id);
     try {
       await toggleUserActive(id, !current);
-      fetchUsers();
+      await fetchUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to toggle status');
+      setUserActionError(err instanceof Error ? err.message : 'Failed to toggle status');
     } finally {
       setTogglingId(null);
     }
   }
 
-  async function handleDeleteUser(id: string, name: string) {
+  async function handleDeleteUser(id: string, name: string, userEmail: string) {
     if (deletingUserId) return;
     if (id === currentUser?.id) { alert("You can't delete your own account."); return; }
-    if (!window.confirm(`Delete user "${name}"? This cannot be undone.`)) return;
+    const displayName = name || userEmail;
+    if (!window.confirm(`Delete user "${displayName}"? This cannot be undone.`)) return;
+    setUserActionError('');
+    setUserActionSuccess('');
     setDeletingUserId(id);
     try {
       await deleteUser(id);
-      fetchUsers();
+      await fetchUsers();
+      setUserActionSuccess(`Deleted ${displayName}`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete user');
+      setUserActionError(err instanceof Error ? err.message : 'Failed to delete user');
     } finally {
       setDeletingUserId(null);
     }
@@ -211,7 +225,7 @@ export function AdminPage() {
             </div>
             <button
               type="submit"
-              disabled={inviteLoading}
+              disabled={inviteLoading || !fullName.trim() || !email.trim()}
               className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors"
             >
               {inviteLoading ? 'Sending…' : 'Send Invite'}
@@ -234,6 +248,16 @@ export function AdminPage() {
           {error && (
             <p className="text-red-600 text-sm px-4 py-3 border-b border-red-100 bg-red-50">
               {error}
+            </p>
+          )}
+          {userActionError && (
+            <p className="text-red-600 text-sm px-4 py-3 border-b border-red-100 bg-red-50">
+              {userActionError}
+            </p>
+          )}
+          {userActionSuccess && (
+            <p className="text-green-600 text-sm px-4 py-3 border-b border-green-100 bg-green-50">
+              {userActionSuccess}
             </p>
           )}
           {loading ? (
@@ -293,9 +317,9 @@ export function AdminPage() {
                         <td className="px-4 py-3 text-gray-500">{formatDate(user.created_at)}</td>
                         <td className="px-4 py-3">
                           <button
-                            onClick={() => handleDeleteUser(user.id, user.full_name)}
-                            disabled={deletingUserId === user.id}
-                            className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-50"
+                            onClick={() => handleDeleteUser(user.id, user.full_name, user.email)}
+                            disabled={deletingUserId === user.id || user.id === currentUser?.id}
+                            className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 disabled:hover:text-gray-300"
                             title="Delete user"
                           >
                             <Trash2 size={16} />

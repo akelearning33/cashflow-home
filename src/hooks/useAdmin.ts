@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, supabaseAnonKey, supabaseUrl } from '../lib/supabaseClient';
 import type { AdminUser, UserRole } from '../types';
 
 interface UseAdminReturn {
@@ -11,6 +11,43 @@ interface UseAdminReturn {
   toggleUserActive: (id: string, isActive: boolean) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   inviteUser: (data: { full_name: string; email: string; role: UserRole }) => Promise<void>;
+}
+
+async function getResponseErrorMessage(response: Response): Promise<string> {
+  try {
+    const body = await response.clone().json();
+    if (typeof body?.error === 'string') return body.error;
+    if (typeof body?.message === 'string') return body.message;
+  } catch {
+    try {
+      const body = await response.clone().text();
+      if (body) return body;
+    } catch {
+      // Fall through to the generic HTTP error below.
+    }
+  }
+
+  return `Edge Function returned ${response.status}`;
+}
+
+async function invokeAdminFunction(functionName: string, body: Record<string, unknown>): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Not authenticated');
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
+    method: 'POST',
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+      'Content-Type': 'application/json',
+      'x-user-authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response));
+  }
 }
 
 export function useAdmin(): UseAdminReturn {
@@ -63,31 +100,17 @@ export function useAdmin(): UseAdminReturn {
   );
 
   const deleteUser = useCallback(async (id: string): Promise<void> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error('Not authenticated');
-
-    const res = await supabase.functions.invoke('delete-user', {
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: { user_id: id },
-    });
-
-    if (res.error) throw new Error(res.error.message);
+    await invokeAdminFunction('delete-user', { user_id: id });
   }, []);
 
   const inviteUser = useCallback(
     async (payload: { full_name: string; email: string; role: UserRole }): Promise<void> => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
-
-      const res = await supabase.functions.invoke('invite-user', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: payload,
+      await invokeAdminFunction('invite-user', {
+        ...payload,
+        full_name: payload.full_name.trim(),
+        email: payload.email.trim().toLowerCase(),
+        redirect_to: `${window.location.origin}/login`,
       });
-      if (res.error) throw new Error(res.error.message);
     },
     []
   );
