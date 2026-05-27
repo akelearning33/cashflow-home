@@ -9,7 +9,7 @@ interface Props {
 
 export function TransactionForm({ onSuccess }: Props) {
   const { addTransaction } = useTransactions();
-  const { categories, loading: categoriesLoading, fetchCategories } = useCategories();
+  const { loading: categoriesLoading, fetchCategories, getCategoriesByType } = useCategories();
   const today = new Date().toISOString().slice(0, 10);
 
   const [type, setType] = useState<TransactionType>('expense');
@@ -24,9 +24,7 @@ export function TransactionForm({ onSuccess }: Props) {
     fetchCategories();
   }, [fetchCategories]);
 
-  const availableCategories = categories
-    .filter((c) => c.type === type)
-    .map((c) => c.name);
+  const { system: systemCategories, custom: customCategories } = getCategoriesByType(type);
 
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
@@ -119,9 +117,20 @@ export function TransactionForm({ onSuccess }: Props) {
           <option value="">
             {categoriesLoading ? 'Loading…' : 'Select category…'}
           </option>
-          {availableCategories.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
+          {systemCategories.length > 0 && (
+            <optgroup label="Default Categories">
+              {systemCategories.map((c) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </optgroup>
+          )}
+          {customCategories.length > 0 && (
+            <optgroup label="My Categories">
+              {customCategories.map((c) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </div>
 

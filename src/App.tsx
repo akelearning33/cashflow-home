@@ -7,6 +7,7 @@ import { SetPasswordPage } from './pages/SetPasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { AdminPage } from './pages/AdminPage';
+import { CategoriesPage } from './pages/CategoriesPage';
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
+            <Route path="/categories" element={<CategoriesPage />} />
             <Route element={<AdminRoute />}>
               <Route path="/admin" element={<AdminPage />} />
             </Route>

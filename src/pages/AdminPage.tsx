@@ -12,7 +12,7 @@ export function AdminPage() {
   const { user: currentUser } = useAuth();
   const { users, loading, error, fetchUsers, updateUserRole, toggleUserActive, deleteUser, inviteUser } =
     useAdmin();
-  const { categories, loading: catLoading, error: catError, fetchCategories, addCategory, updateCategory, deleteCategory } =
+  const { categories, loading: catLoading, error: catError, fetchCategories, addSystemCategory, updateCategory, deleteCategory } =
     useCategories();
 
   // Invite form state
@@ -123,7 +123,7 @@ export function AdminPage() {
     setAddCatError('');
     setAddCatLoading(true);
     try {
-      await addCategory(catTab, name);
+      await addSystemCategory(catTab, name);
       setNewCatName('');
       fetchCategories();
     } catch (err) {
@@ -172,7 +172,7 @@ export function AdminPage() {
     }
   }
 
-  const visibleCategories = categories.filter((c) => c.type === catTab);
+  const visibleCategories = categories.filter((c) => c.type === catTab && c.user_id === null);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -338,7 +338,7 @@ export function AdminPage() {
         <div className="bg-white rounded-2xl border border-gray-200 p-5">
           <div className="flex items-center gap-2 mb-4">
             <Tag size={18} className="text-indigo-600" />
-            <h2 className="text-sm font-semibold text-gray-700">Categories</h2>
+            <h2 className="text-sm font-semibold text-gray-700">System Default Categories</h2>
           </div>
 
           {/* Expense / Income tabs */}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, List, ShieldCheck, LogOut, Menu, X, Wallet } from 'lucide-react';
+import { LayoutDashboard, List, ShieldCheck, LogOut, Menu, X, Wallet, Tag } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 export function Navbar() {
@@ -39,6 +39,10 @@ export function Navbar() {
             <NavLink to="/transactions" className={linkClass}>
               <List size={16} />
               Transactions
+            </NavLink>
+            <NavLink to="/categories" className={linkClass}>
+              <Tag size={16} />
+              Categories
             </NavLink>
             {profile?.role === 'admin' && (
               <NavLink to="/admin" className={linkClass}>
@@ -96,6 +100,14 @@ export function Navbar() {
             >
               <List size={16} />
               Transactions
+            </NavLink>
+            <NavLink
+              to="/categories"
+              className={linkClass}
+              onClick={() => setMenuOpen(false)}
+            >
+              <Tag size={16} />
+              Categories
             </NavLink>
             {profile?.role === 'admin' && (
               <NavLink

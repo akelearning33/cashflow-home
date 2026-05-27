@@ -48,4 +48,5 @@ export interface Category {
   id: string;
   type: TransactionType;
   name: string;
+  user_id: string | null; // null = system default, UUID = user-owned
 }
