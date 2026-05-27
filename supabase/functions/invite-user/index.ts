@@ -13,6 +13,20 @@ function logEvent(event: string, details: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ fn: FUNCTION_NAME, event, ...details }));
 }
 
+function getServiceRoleKey(): string | undefined {
+  const secretKeys = Deno.env.get('SUPABASE_SECRET_KEYS');
+  if (secretKeys) {
+    try {
+      const parsed = JSON.parse(secretKeys);
+      if (typeof parsed.default === 'string') return parsed.default;
+    } catch {
+      // Fall back to manually configured secrets below.
+    }
+  }
+
+  return Deno.env.get('SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? undefined;
+}
+
 serve(async (req: Request) => {
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
 
@@ -55,7 +69,7 @@ serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const serviceRoleKey = getServiceRoleKey();
     if (!supabaseUrl || !serviceRoleKey) {
       logEvent('missing_env', {
         requestId,
