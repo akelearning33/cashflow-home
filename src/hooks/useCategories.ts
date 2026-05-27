@@ -11,10 +11,20 @@ export function useCategories() {
     setLoading(true);
     setError(null);
     try {
-      // RLS ensures we only get system defaults + current user's categories
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setError('Not authenticated');
+        setLoading(false);
+        return;
+      }
+
+      // Explicitly filter: system defaults (user_id IS NULL) + current user's own categories only.
+      // This ensures admin cannot see other users' custom categories,
+      // even if RLS policies in the database are misconfigured.
       const { data, error: fetchError } = await supabase
         .from('categories')
         .select('id, type, name, user_id')
+        .or(`user_id.is.null,user_id.eq.${user.id}`)
         .order('name');
       if (fetchError) {
         setError(fetchError.message);
