@@ -109,7 +109,7 @@ export function useAdmin(): UseAdminReturn {
         ...payload,
         full_name: payload.full_name.trim(),
         email: payload.email.trim().toLowerCase(),
-        redirect_to: `${window.location.origin}/login`,
+        redirect_to: `${window.location.origin}/set-password`,
       });
     },
     []
