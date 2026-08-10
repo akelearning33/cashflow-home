@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase, supabaseAnonKey, supabaseUrl } from '../lib/supabaseClient';
 import type { AdminUser, UserRole } from '../types';
+import { getThaiErrorMessage } from '../utils/errors';
 
 interface UseAdminReturn {
   users: AdminUser[];
@@ -65,12 +66,12 @@ export function useAdmin(): UseAdminReturn {
         .order('created_at', { ascending: false });
 
       if (fetchError) {
-        setError(fetchError.message);
+        setError(getThaiErrorMessage(fetchError, 'โหลดรายชื่อสมาชิกไม่สำเร็จ'));
       } else {
         setUsers((data as AdminUser[]) ?? []);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load users');
+      setError(getThaiErrorMessage(err, 'โหลดรายชื่อสมาชิกไม่สำเร็จ'));
     } finally {
       setLoading(false);
     }
@@ -82,8 +83,7 @@ export function useAdmin(): UseAdminReturn {
       .update({ role })
       .eq('id', id)
       .select();
-    if (updateError) throw new Error(updateError.message);
-    if (!data || data.length === 0) throw new Error('Failed to update role. Your session may have expired — please log in again.');
+    if (updateError || !data || data.length === 0) throw new Error(getThaiErrorMessage(updateError, 'เปลี่ยนสิทธิ์ไม่สำเร็จ'));
   }, []);
 
   const toggleUserActive = useCallback(
@@ -93,8 +93,7 @@ export function useAdmin(): UseAdminReturn {
         .update({ is_active: isActive })
         .eq('id', id)
         .select();
-      if (updateError) throw new Error(updateError.message);
-      if (!data || data.length === 0) throw new Error('Failed to update status. Your session may have expired — please log in again.');
+      if (updateError || !data || data.length === 0) throw new Error(getThaiErrorMessage(updateError, 'เปลี่ยนสถานะสมาชิกไม่สำเร็จ'));
     },
     []
   );

@@ -1,476 +1,192 @@
 import { useEffect, useState } from 'react';
-import { UserPlus, Trash2, ToggleLeft, ToggleRight, ShieldCheck, Tag, Plus, Pencil, Check, X } from 'lucide-react';
+import { Archive, Check, MailPlus, Pencil, Plus, RotateCcw, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToast } from '../hooks/useToast';
 import { useAdmin } from '../hooks/useAdmin';
 import { useCategories } from '../hooks/useCategories';
-import type { UserRole, TransactionType } from '../types';
+import { useAuth } from '../hooks/useAuth';
+import type { AdminUser, Category, TransactionType, UserRole } from '../types';
 import { formatDate } from '../utils/formatDate';
 import { getCategoryColor } from '../utils/categoryColors';
-import { useAuth } from '../hooks/useAuth';
+import { getThaiErrorMessage } from '../utils/errors';
 
 export function AdminPage() {
   const { user: currentUser } = useAuth();
-  const { users, loading, error, fetchUsers, updateUserRole, toggleUserActive, deleteUser, inviteUser } =
-    useAdmin();
-  const { categories, loading: catLoading, error: catError, fetchCategories, addSystemCategory, updateCategory, deleteCategory } =
-    useCategories();
-
-  // Invite form state
+  const { showToast } = useToast();
+  const { users, loading, error, fetchUsers, updateUserRole, toggleUserActive, deleteUser, inviteUser } = useAdmin();
+  const { categories, loading: categoryLoading, error: categoryError, fetchCategories, addSystemCategory, updateCategory, archiveCategory, restoreCategory } = useCategories();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('member');
   const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteError, setInviteError] = useState('');
-  const [inviteSuccess, setInviteSuccess] = useState('');
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<AdminUser | null>(null);
+  const [categoryTab, setCategoryTab] = useState<TransactionType>('expense');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [addCategoryLoading, setAddCategoryLoading] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState('');
+  const [categoryActionLoading, setCategoryActionLoading] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<Category | null>(null);
 
-  // User action loading guards
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
-  const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
-  const [userActionError, setUserActionError] = useState('');
-  const [userActionSuccess, setUserActionSuccess] = useState('');
+  useEffect(() => { void fetchUsers(); void fetchCategories(); }, [fetchCategories, fetchUsers]);
 
-  // Category state
-  const [catTab, setCatTab] = useState<TransactionType>('expense');
-  const [newCatName, setNewCatName] = useState('');
-  const [addCatLoading, setAddCatLoading] = useState(false);
-  const [addCatError, setAddCatError] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
-  const [editCatLoading, setEditCatLoading] = useState(false);
-  const [editCatError, setEditCatError] = useState('');
+  const visibleCategories = categories.filter((category) => category.user_id === null && category.type === categoryTab);
+  const activeCategories = visibleCategories.filter((category) => category.is_active);
+  const archivedCategories = visibleCategories.filter((category) => !category.is_active);
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
-  useEffect(() => { fetchCategories(); }, [fetchCategories]);
-
-  async function handleInvite(e: React.SyntheticEvent) {
-    e.preventDefault();
-    const trimmedFullName = fullName.trim();
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!trimmedFullName || !normalizedEmail) return;
-
-    setInviteError('');
-    setInviteSuccess('');
+  async function handleInvite(event: React.SyntheticEvent) {
+    event.preventDefault();
+    if (!fullName.trim() || !email.trim()) return;
     setInviteLoading(true);
     try {
-      await inviteUser({ full_name: trimmedFullName, email: normalizedEmail, role });
-      setInviteSuccess(`Invitation sent to ${normalizedEmail}`);
-      setFullName('');
-      setEmail('');
-      setRole('member');
+      await inviteUser({ full_name: fullName.trim(), email: email.trim().toLowerCase(), role });
+      showToast(`ส่งคำเชิญไปที่ ${email.trim().toLowerCase()} แล้ว`);
+      setFullName(''); setEmail(''); setRole('member');
       await fetchUsers();
-    } catch (err) {
-      setInviteError(err instanceof Error ? err.message : 'Failed to invite user');
+    } catch (inviteError) {
+      showToast(getThaiErrorMessage(inviteError, 'ส่งคำเชิญไม่สำเร็จ'), { tone: 'error' });
     } finally {
       setInviteLoading(false);
     }
   }
 
-  async function handleRoleChange(id: string, newRole: UserRole) {
-    if (updatingRoleId) return;
-    if (id === currentUser?.id) { alert("You can't change your own role."); return; }
-    setUserActionError('');
-    setUserActionSuccess('');
-    setUpdatingRoleId(id);
+  async function handleRoleChange(user: AdminUser, nextRole: UserRole) {
+    if (user.id === currentUser?.id) return;
+    setBusyUserId(user.id);
     try {
-      await updateUserRole(id, newRole);
+      await updateUserRole(user.id, nextRole);
       await fetchUsers();
-    } catch (err) {
-      setUserActionError(err instanceof Error ? err.message : 'Failed to update role');
+      showToast(`เปลี่ยนสิทธิ์ของ ${user.full_name} แล้ว`);
+    } catch (updateError) {
+      showToast(getThaiErrorMessage(updateError, 'เปลี่ยนสิทธิ์ไม่สำเร็จ'), { tone: 'error' });
     } finally {
-      setUpdatingRoleId(null);
+      setBusyUserId(null);
     }
   }
 
-  async function handleToggleActive(id: string, current: boolean) {
-    if (togglingId) return;
-    setUserActionError('');
-    setUserActionSuccess('');
-    setTogglingId(id);
+  async function handleToggleActive(user: AdminUser) {
+    if (user.id === currentUser?.id) return;
+    setBusyUserId(user.id);
     try {
-      await toggleUserActive(id, !current);
+      await toggleUserActive(user.id, !user.is_active);
       await fetchUsers();
-    } catch (err) {
-      setUserActionError(err instanceof Error ? err.message : 'Failed to toggle status');
+      showToast(user.is_active ? `ปิดบัญชี ${user.full_name} แล้ว` : `เปิดบัญชี ${user.full_name} แล้ว`);
+    } catch (toggleError) {
+      showToast(getThaiErrorMessage(toggleError, 'เปลี่ยนสถานะไม่สำเร็จ'), { tone: 'error' });
     } finally {
-      setTogglingId(null);
+      setBusyUserId(null);
     }
   }
 
-  async function handleDeleteUser(id: string, name: string, userEmail: string) {
-    if (deletingUserId) return;
-    if (id === currentUser?.id) { alert("You can't delete your own account."); return; }
-    const displayName = name || userEmail;
-    if (!window.confirm(`Delete user "${displayName}"? This cannot be undone.`)) return;
-    setUserActionError('');
-    setUserActionSuccess('');
-    setDeletingUserId(id);
+  async function confirmDeleteUser() {
+    if (!deleteUserTarget) return;
+    const target = deleteUserTarget;
+    setBusyUserId(target.id);
     try {
-      await deleteUser(id);
+      await deleteUser(target.id);
+      setDeleteUserTarget(null);
       await fetchUsers();
-      setUserActionSuccess(`Deleted ${displayName}`);
-    } catch (err) {
-      setUserActionError(err instanceof Error ? err.message : 'Failed to delete user');
+      showToast(`ลบบัญชี ${target.full_name || target.email} แล้ว`);
+    } catch (deleteError) {
+      showToast(getThaiErrorMessage(deleteError, 'ลบบัญชีไม่สำเร็จ'), { tone: 'error' });
     } finally {
-      setDeletingUserId(null);
+      setBusyUserId(null);
     }
   }
 
-  async function handleAddCategory(e: React.SyntheticEvent) {
-    e.preventDefault();
-    const name = newCatName.trim();
-    if (!name) return;
-    setAddCatError('');
-    setAddCatLoading(true);
+  async function handleAddCategory(event: React.SyntheticEvent) {
+    event.preventDefault();
+    if (!newCategoryName.trim()) return;
+    setAddCategoryLoading(true);
     try {
-      await addSystemCategory(catTab, name);
-      setNewCatName('');
-      fetchCategories();
-    } catch (err) {
-      setAddCatError(err instanceof Error ? err.message : 'Failed to add category');
+      await addSystemCategory(categoryTab, newCategoryName.trim());
+      setNewCategoryName('');
+      await fetchCategories();
+      showToast('เพิ่มหมวดหมู่มาตรฐานแล้ว');
+    } catch (addError) {
+      showToast(getThaiErrorMessage(addError, 'เพิ่มหมวดหมู่ไม่สำเร็จ'), { tone: 'error' });
     } finally {
-      setAddCatLoading(false);
+      setAddCategoryLoading(false);
     }
   }
 
-  async function handleDeleteCategory(id: string, name: string) {
-    if (!window.confirm(`Delete category "${name}"?`)) return;
+  async function handleSaveCategory(id: string) {
+    if (!editingCategoryName.trim()) return;
+    setCategoryActionLoading(true);
     try {
-      await deleteCategory(id);
-      if (editingId === id) setEditingId(null);
-      fetchCategories();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete category');
-    }
-  }
-
-  function startEdit(id: string, name: string) {
-    setEditingId(id);
-    setEditingName(name);
-    setEditCatError('');
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setEditingName('');
-    setEditCatError('');
-  }
-
-  async function handleSaveEdit(id: string) {
-    const name = editingName.trim();
-    if (!name) return;
-    setEditCatError('');
-    setEditCatLoading(true);
-    try {
-      await updateCategory(id, name);
-      setEditingId(null);
-      fetchCategories();
-    } catch (err) {
-      setEditCatError(err instanceof Error ? err.message : 'Failed to update category');
+      await updateCategory(id, editingCategoryName.trim());
+      setEditingCategoryId(null);
+      await fetchCategories();
+      showToast('เปลี่ยนชื่อหมวดหมู่มาตรฐานแล้ว');
+    } catch (updateError) {
+      showToast(getThaiErrorMessage(updateError, 'แก้ไขหมวดหมู่ไม่สำเร็จ'), { tone: 'error' });
     } finally {
-      setEditCatLoading(false);
+      setCategoryActionLoading(false);
     }
   }
 
-  const visibleCategories = categories.filter((c) => c.type === catTab && c.user_id === null);
+  async function confirmArchiveCategory() {
+    if (!archiveTarget) return;
+    const target = archiveTarget;
+    setCategoryActionLoading(true);
+    try {
+      await archiveCategory(target.id);
+      setArchiveTarget(null);
+      await fetchCategories();
+      showToast('เก็บหมวดหมู่มาตรฐานแล้ว', { actionLabel: 'เลิกทำ', onAction: async () => { await restoreCategory(target.id); await fetchCategories(); showToast('กู้คืนหมวดหมู่แล้ว'); } });
+    } catch (archiveError) {
+      showToast(getThaiErrorMessage(archiveError, 'เก็บหมวดหมู่ไม่สำเร็จ'), { tone: 'error' });
+    } finally {
+      setCategoryActionLoading(false);
+    }
+  }
+
+  async function handleRestoreCategory(category: Category) {
+    try {
+      await restoreCategory(category.id);
+      await fetchCategories();
+      showToast(`กู้คืนหมวด “${category.name}” แล้ว`);
+    } catch (restoreError) {
+      showToast(getThaiErrorMessage(restoreError, 'กู้คืนหมวดหมู่ไม่สำเร็จ'), { tone: 'error' });
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 pb-24 sm:pb-0">
       <Navbar />
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="text-indigo-600" size={22} />
-          <h1 className="text-xl font-bold text-gray-900">Admin</h1>
-        </div>
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6">
+        <div className="flex items-center gap-2"><ShieldCheck className="text-indigo-600" size={23} /><div><h1 className="text-2xl font-black text-slate-900">จัดการระบบ</h1><p className="text-sm text-slate-500">เชิญสมาชิกและดูแลหมวดหมู่มาตรฐาน</p></div></div>
 
-        {/* Invite user form */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <UserPlus size={18} className="text-indigo-600" />
-            <h2 className="text-sm font-semibold text-gray-700">Invite User</h2>
-          </div>
-          <form onSubmit={handleInvite} className="flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Full Name</label>
-              <input
-                required
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Jane Doe"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-              <input
-                required
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-52 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="jane@example.com"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as UserRole)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              disabled={inviteLoading || !fullName.trim() || !email.trim()}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors"
-            >
-              {inviteLoading ? 'Sending…' : 'Send Invite'}
-            </button>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center gap-2"><MailPlus size={19} className="text-indigo-600" /><h2 className="font-bold text-slate-800">เชิญสมาชิก</h2></div>
+          <form onSubmit={handleInvite} className="grid gap-3 md:grid-cols-[1fr_1.2fr_150px_auto] md:items-end">
+            <label className="text-sm font-semibold text-slate-700">ชื่อ–นามสกุล<input required value={fullName} onChange={(event) => setFullName(event.target.value)} className="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" placeholder="สมชาย ใจดี" /></label>
+            <label className="text-sm font-semibold text-slate-700">อีเมล<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" placeholder="name@example.com" /></label>
+            <label className="text-sm font-semibold text-slate-700">สิทธิ์<select value={role} onChange={(event) => setRole(event.target.value as UserRole)} className="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"><option value="member">สมาชิก</option><option value="admin">ผู้ดูแลระบบ</option></select></label>
+            <button type="submit" disabled={inviteLoading || !fullName.trim() || !email.trim()} className="min-h-12 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">{inviteLoading ? 'กำลังส่ง…' : 'ส่งคำเชิญ'}</button>
           </form>
-          {inviteError && (
-            <p className="mt-3 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {inviteError}
-            </p>
-          )}
-          {inviteSuccess && (
-            <p className="mt-3 text-green-600 text-sm bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-              {inviteSuccess}
-            </p>
-          )}
-        </div>
+          <p className="mt-3 text-xs text-slate-400">ระบบเปิดให้ใช้งานเฉพาะอีเมลที่ได้รับคำเชิญเท่านั้น</p>
+        </section>
 
-        {/* User table */}
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          {error && (
-            <p className="text-red-600 text-sm px-4 py-3 border-b border-red-100 bg-red-50">
-              {error}
-            </p>
-          )}
-          {userActionError && (
-            <p className="text-red-600 text-sm px-4 py-3 border-b border-red-100 bg-red-50">
-              {userActionError}
-            </p>
-          )}
-          {userActionSuccess && (
-            <p className="text-green-600 text-sm px-4 py-3 border-b border-green-100 bg-green-50">
-              {userActionSuccess}
-            </p>
-          )}
-          {loading ? (
-            <div className="p-4 space-y-3">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />
-              ))}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Role</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Joined</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-gray-400">
-                        No users found
-                      </td>
-                    </tr>
-                  ) : (
-                    users.map((user) => (
-                      <tr key={user.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-800">{user.full_name}</td>
-                        <td className="px-4 py-3 text-gray-600">{user.email}</td>
-                        <td className="px-4 py-3">
-                          <select
-                            value={user.role}
-                            onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
-                            disabled={updatingRoleId === user.id}
-                            className="border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
-                          >
-                            <option value="member">Member</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => handleToggleActive(user.id, user.is_active)}
-                            disabled={togglingId === user.id}
-                            className={`flex items-center gap-1 text-xs font-medium disabled:opacity-50 ${
-                              user.is_active ? 'text-green-600' : 'text-gray-400'
-                            }`}
-                          >
-                            {user.is_active ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                            {user.is_active ? 'Active' : 'Inactive'}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-gray-500">{formatDate(user.created_at)}</td>
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => handleDeleteUser(user.id, user.full_name, user.email)}
-                            disabled={deletingUserId === user.id || user.id === currentUser?.id}
-                            className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 disabled:hover:text-gray-300"
-                            title="Delete user"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <section>
+          <div className="mb-3 flex items-center justify-between"><div><h2 className="font-bold text-slate-800">สมาชิก ({users.length})</h2><p className="text-xs text-slate-400">ข้อมูลทางการเงินของสมาชิกแต่ละคนแยกจากกัน</p></div>{error && <button type="button" onClick={() => void fetchUsers()} className="flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold text-rose-600"><RotateCcw size={15} /> ลองใหม่</button>}</div>
+          {error && <p className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+          {loading ? <div className="grid gap-3 md:grid-cols-2">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-44 animate-pulse rounded-2xl bg-slate-200" />)}</div> : <div className="grid gap-3 md:grid-cols-2">{users.map((user) => { const isSelf = user.id === currentUser?.id; return <article key={user.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start gap-3"><span className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-full bg-indigo-50 font-black text-indigo-700">{user.full_name?.charAt(0).toUpperCase() || <UserRound size={18} />}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-bold text-slate-800">{user.full_name || 'ยังไม่ระบุชื่อ'}</h3>{isSelf && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">บัญชีของคุณ</span>}</div><p className="truncate text-sm text-slate-500">{user.email}</p><p className="mt-1 text-xs text-slate-400">เข้าร่วม {formatDate(user.created_at)}</p></div></div><div className="mt-4 grid grid-cols-[1fr_1fr_auto] gap-2"><select aria-label={`สิทธิ์ของ ${user.full_name}`} value={user.role} onChange={(event) => void handleRoleChange(user, event.target.value as UserRole)} disabled={isSelf || busyUserId === user.id} className="min-h-11 min-w-0 rounded-xl border border-slate-200 bg-white px-2 text-xs font-bold text-slate-600 disabled:bg-slate-50 disabled:text-slate-400"><option value="member">สมาชิก</option><option value="admin">ผู้ดูแลระบบ</option></select><button type="button" onClick={() => void handleToggleActive(user)} disabled={isSelf || busyUserId === user.id} className={`min-h-11 rounded-xl px-2 text-xs font-bold disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${user.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{user.is_active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}</button><button type="button" onClick={() => setDeleteUserTarget(user)} disabled={isSelf || busyUserId === user.id} className="grid min-h-11 min-w-11 place-items-center rounded-xl text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:text-slate-200" aria-label={`ลบบัญชี ${user.full_name}`}><Trash2 size={17} /></button></div></article>; })}</div>}
+        </section>
 
-        {/* Categories management */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Tag size={18} className="text-indigo-600" />
-            <h2 className="text-sm font-semibold text-gray-700">System Default Categories</h2>
-          </div>
-
-          {/* Expense / Income tabs */}
-          <div className="flex border border-gray-200 rounded-lg overflow-hidden mb-4 w-fit">
-            {(['expense', 'income'] as TransactionType[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => { setCatTab(t); setAddCatError(''); cancelEdit(); }}
-                className={`px-5 py-1.5 text-sm font-medium transition-colors capitalize ${
-                  catTab === t
-                    ? t === 'expense'
-                      ? 'bg-red-500 text-white'
-                      : 'bg-green-500 text-white'
-                    : 'bg-white text-gray-500 hover:bg-gray-50'
-                }`}
-              >
-                {t === 'expense' ? 'Expense' : 'Income'}
-              </button>
-            ))}
-          </div>
-
-          {catError && (
-            <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
-              {catError}
-            </p>
-          )}
-
-          {/* Category list */}
-          {catLoading ? (
-            <div className="space-y-2 mb-4">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-9 bg-gray-100 rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-1.5 mb-4">
-              {visibleCategories.length === 0 ? (
-                <p className="text-sm text-gray-400 py-2">No categories yet.</p>
-              ) : (
-                visibleCategories.map((c, i) => (
-                  <div key={c.id} className="rounded-lg">
-                    {editingId === c.id ? (
-                      <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-lg">
-                        <div
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: getCategoryColor(c.name, i) }}
-                        />
-                        <input
-                          autoFocus
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveEdit(c.id);
-                            if (e.key === 'Escape') cancelEdit();
-                          }}
-                          className="flex-1 border border-indigo-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          maxLength={50}
-                        />
-                        <button
-                          onClick={() => handleSaveEdit(c.id)}
-                          disabled={editCatLoading || !editingName.trim()}
-                          className="text-indigo-600 hover:text-indigo-800 disabled:opacity-40 transition-colors"
-                          title="Save"
-                        >
-                          <Check size={15} />
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="text-gray-400 hover:text-gray-600 transition-colors"
-                          title="Cancel"
-                        >
-                          <X size={15} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 group">
-                        <div
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: getCategoryColor(c.name, i) }}
-                        />
-                        <span className="flex-1 text-sm text-gray-700">{c.name}</span>
-                        <button
-                          onClick={() => startEdit(c.id, c.name)}
-                          className="text-gray-300 hover:text-indigo-500 transition-colors"
-                          title="Edit category"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCategory(c.id, c.name)}
-                          className="text-gray-300 hover:text-red-500 transition-colors"
-                          title="Delete category"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    )}
-                    {editingId === c.id && editCatError && (
-                      <p className="text-red-600 text-xs px-3 pt-1">{editCatError}</p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {/* Add category form */}
-          <form onSubmit={handleAddCategory} className="flex gap-2">
-            <input
-              type="text"
-              value={newCatName}
-              onChange={(e) => setNewCatName(e.target.value)}
-              placeholder={`New ${catTab} category…`}
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              maxLength={50}
-            />
-            <button
-              type="submit"
-              disabled={addCatLoading || !newCatName.trim()}
-              className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              <Plus size={15} />
-              Add
-            </button>
-          </form>
-          {addCatError && (
-            <p className="mt-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-              {addCatError}
-            </p>
-          )}
-        </div>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4"><h2 className="font-bold text-slate-800">หมวดหมู่มาตรฐาน</h2><p className="text-xs text-slate-400">สมาชิกทุกคนมองเห็น แต่ข้อมูลรายการยังแยกกัน</p></div>
+          <div className="mb-5 grid max-w-sm grid-cols-2 rounded-xl bg-slate-100 p-1"><button type="button" onClick={() => setCategoryTab('expense')} className={`min-h-11 rounded-lg text-sm font-bold ${categoryTab === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}`}>รายจ่าย</button><button type="button" onClick={() => setCategoryTab('income')} className={`min-h-11 rounded-lg text-sm font-bold ${categoryTab === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}>รายรับ</button></div>
+          {categoryError && <p className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{categoryError}</p>}
+          {categoryLoading ? <div className="space-y-2">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-12 animate-pulse rounded-xl bg-slate-100" />)}</div> : <div className="grid gap-2 md:grid-cols-2">{activeCategories.map((category, index) => <div key={category.id} className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-100 px-3"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: getCategoryColor(category.name, index) }} />{editingCategoryId === category.id ? <><label className="sr-only" htmlFor={`admin-category-${category.id}`}>ชื่อหมวดหมู่</label><input id={`admin-category-${category.id}`} autoFocus value={editingCategoryName} onChange={(event) => setEditingCategoryName(event.target.value)} className="min-h-10 min-w-0 flex-1 rounded-lg border border-indigo-300 px-2 text-sm" /><button type="button" onClick={() => void handleSaveCategory(category.id)} disabled={categoryActionLoading} className="grid min-h-11 min-w-11 place-items-center text-indigo-600" aria-label="บันทึก"><Check size={16} /></button><button type="button" onClick={() => setEditingCategoryId(null)} className="grid min-h-11 min-w-11 place-items-center text-slate-400" aria-label="ยกเลิก"><X size={16} /></button></> : <><span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{category.name}</span><button type="button" onClick={() => { setEditingCategoryId(category.id); setEditingCategoryName(category.name); }} className="grid min-h-11 min-w-11 place-items-center rounded-lg text-slate-300 hover:text-indigo-600" aria-label={`แก้ไข ${category.name}`}><Pencil size={15} /></button><button type="button" onClick={() => setArchiveTarget(category)} className="grid min-h-11 min-w-11 place-items-center rounded-lg text-slate-300 hover:text-amber-600" aria-label={`เก็บ ${category.name}`}><Archive size={16} /></button></>}</div>)}</div>}
+          {archivedCategories.length > 0 && <div className="mt-4 rounded-xl bg-slate-50 p-3"><p className="mb-2 text-xs font-bold text-slate-400">เก็บไว้แล้ว</p>{archivedCategories.map((category) => <div key={category.id} className="flex min-h-11 items-center gap-2"><span className="min-w-0 flex-1 truncate text-sm text-slate-400">{category.name}</span><button type="button" onClick={() => void handleRestoreCategory(category)} className="flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-indigo-600 hover:bg-indigo-50"><RotateCcw size={14} /> กู้คืน</button></div>)}</div>}
+          <form onSubmit={handleAddCategory} className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-5 sm:flex-row"><label htmlFor="admin-new-category" className="sr-only">ชื่อหมวดหมู่ใหม่</label><input id="admin-new-category" value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" placeholder={`เพิ่มหมวด${categoryTab === 'expense' ? 'รายจ่าย' : 'รายรับ'}มาตรฐาน`} maxLength={50} /><button type="submit" disabled={addCategoryLoading || !newCategoryName.trim()} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white disabled:opacity-50"><Plus size={17} /> {addCategoryLoading ? 'กำลังเพิ่ม…' : 'เพิ่มหมวดหมู่'}</button></form>
+        </section>
       </main>
+      <ConfirmDialog open={Boolean(deleteUserTarget)} title="ลบบัญชีสมาชิกหรือไม่?" description={deleteUserTarget ? `บัญชี ${deleteUserTarget.full_name || deleteUserTarget.email} และข้อมูลทั้งหมดจะถูกลบถาวร การดำเนินการนี้เลิกทำไม่ได้` : ''} confirmLabel="ลบบัญชี" loading={Boolean(busyUserId)} onClose={() => setDeleteUserTarget(null)} onConfirm={confirmDeleteUser} />
+      <ConfirmDialog open={Boolean(archiveTarget)} title="เก็บหมวดหมู่นี้หรือไม่?" description={archiveTarget ? `หมวด “${archiveTarget.name}” จะไม่แสดงสำหรับรายการใหม่ แต่ประวัติเดิมยังอยู่ครบ` : ''} confirmLabel="เก็บหมวดหมู่" loading={categoryActionLoading} destructive={false} onClose={() => setArchiveTarget(null)} onConfirm={confirmArchiveCategory} />
     </div>
   );
 }

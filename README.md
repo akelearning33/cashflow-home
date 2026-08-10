@@ -1,73 +1,36 @@
-# React + TypeScript + Vite
+# CashFlow Home
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+เว็บบันทึกรายรับ–รายจ่ายสำหรับสมาชิกในบ้าน โดยข้อมูลธุรกรรมของแต่ละบัญชีแยกจากกัน ผู้ดูแลระบบมีหน้าที่เชิญและจัดการสมาชิก รวมถึงดูแลหมวดหมู่มาตรฐาน
 
-Currently, two official plugins are available:
+## เริ่มต้นใช้งาน
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. คัดลอก `.env.example` เป็น `.env` และใส่ `VITE_SUPABASE_URL` กับ `VITE_SUPABASE_ANON_KEY`
+2. ติดตั้ง dependency ด้วย `npm install`
+3. รัน migration ใน `supabase/migrations` ตามลำดับ โดย `003_ux_foundation.sql` จะ backfill หมวดหมู่เดิมโดยไม่ลบข้อความเก่า
+4. Deploy Edge Functions `invite-user` และ `delete-user` พร้อมตั้งค่า secret key ของ Supabase
+5. รันแอปด้วย `npm run dev`
 
-## React Compiler
+## ตั้งค่า Auth แบบเชิญเท่านั้น
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- ใน Supabase Dashboard ไปที่ **Authentication → Sign In / Providers** แล้วปิด **Allow new users to sign up**
+- เปิด Email และ Google provider ตามที่ต้องการ ผู้ใช้ Google ที่มีอีเมลตรงกับบัญชีที่ได้รับเชิญจะถูกเชื่อมกับบัญชีเดิม
+- เพิ่ม URL ของ production และ `http://localhost:5173/set-password` ใน Redirect URLs
+- ตั้งค่า Site URL ให้ตรงกับโดเมน production
+- `supabase/config.toml` ตั้ง `auth.enable_signup = false` ไว้แล้วสำหรับ local environment
 
-## Expanding the ESLint configuration
+> การปิด signup ในไฟล์ local config ไม่ได้แก้ค่าของ hosted project อัตโนมัติ ต้องปิดใน Dashboard ก่อนเปิดใช้ production
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## คำสั่งตรวจสอบ
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run lint
+npm test
+npm run build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## โครงสร้างข้อมูลสำคัญ
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- `transactions.category_id` เชื่อมธุรกรรมกับหมวดหมู่ ส่วน `category` เดิมเก็บไว้เป็น fallback
+- `transactions.deleted_at` รองรับ soft delete และ Undo
+- `categories.is_active` ใช้เก็บถาวร/กู้คืนหมวดหมู่โดยไม่ทำลายประวัติ
+- RLS อนุญาตให้สมาชิกและผู้ดูแลระบบอ่านธุรกรรมของตนเองเท่านั้น

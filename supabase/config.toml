@@ -1,3 +1,7 @@
+[auth]
+enabled = true
+enable_signup = false
+
 [functions.delete-user]
 verify_jwt = false
 

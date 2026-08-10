@@ -16,14 +16,17 @@ export interface Transaction {
   type: TransactionType;
   amount: number;
   category: string;
+  category_id: string | null;
   date: string; // ISO date string "YYYY-MM-DD"
   note: string | null;
+  deleted_at: string | null;
   created_at: string;
 }
 
 export interface TransactionFormData {
   type: TransactionType;
   amount: string;
+  category_id: string;
   category: string;
   date: string;
   note: string;
@@ -49,4 +52,5 @@ export interface Category {
   type: TransactionType;
   name: string;
   user_id: string | null; // null = system default, UUID = user-owned
+  is_active: boolean;
 }

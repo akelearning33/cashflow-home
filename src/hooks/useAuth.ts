@@ -1,23 +1,31 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { AuthChangeEvent, User } from '@supabase/supabase-js';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 import type { Profile } from '../types';
+import { getThaiErrorMessage } from '../utils/errors';
+
+interface AuthResult {
+  error: string | null;
+}
 
 interface AuthState {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signInWithGoogle: () => Promise<{ error: string | null }>;
+  notice: string | null;
+  signIn: (email: string, password: string) => Promise<AuthResult>;
+  signInWithGoogle: () => Promise<AuthResult>;
+  resetPassword: (email: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
+  clearNotice: () => void;
 }
 
 export const AuthContext = createContext<AuthState | null>(null);
 
 export function useAuth(): AuthState {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
-  return ctx;
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  return context;
 }
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -26,21 +34,16 @@ async function fetchProfile(userId: string): Promise<Profile | null> {
     .select('*')
     .eq('id', userId)
     .single();
-  if (error) return null;
+  if (error || !data) return null;
   return data as Profile;
 }
 
 function clearClientStorage() {
   try {
     localStorage.clear();
-  } catch {
-    // Ignore storage access failures in restricted browser contexts.
-  }
-
-  try {
     sessionStorage.clear();
   } catch {
-    // Ignore storage access failures in restricted browser contexts.
+    // Storage can be unavailable in restricted browser contexts.
   }
 }
 
@@ -48,51 +51,54 @@ export function useAuthState(): AuthState {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const hadAuthenticatedSession = useRef(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const syncIdRef = useRef(0);
 
   useEffect(() => {
     let isMounted = true;
 
-    const syncAuthState = (sessionUser: User | null, event?: AuthChangeEvent) => {
-      setUser(sessionUser);
-
+    async function syncSession(sessionUser: User | null) {
+      const syncId = ++syncIdRef.current;
       if (!sessionUser) {
-        const shouldForceLogoutFlow = event === 'SIGNED_OUT' && hadAuthenticatedSession.current;
-
-        if (shouldForceLogoutFlow) {
-          clearClientStorage();
-          if (window.location.pathname !== '/login') {
-            window.location.assign('/login');
-          }
-        }
-
+        if (!isMounted || syncId !== syncIdRef.current) return;
+        setUser(null);
         setProfile(null);
         setLoading(false);
         return;
       }
 
-      hadAuthenticatedSession.current = true;
-      setLoading(false);
-      void fetchProfile(sessionUser.id).then((p) => {
-        if (!isMounted) return;
-        setProfile(p);
-      });
-    };
+      setLoading(true);
+      const nextProfile = await fetchProfile(sessionUser.id);
+      if (!isMounted || syncId !== syncIdRef.current) return;
 
-    supabase.auth
-      .getSession()
-      .then(({ data: { session } }) => {
-        if (!isMounted) return;
-        syncAuthState(session?.user ?? null, 'INITIAL_SESSION');
-      })
-      .catch(() => {
-        if (!isMounted) return;
+      if (!nextProfile) {
+        setNotice('ไม่พบข้อมูลสมาชิก กรุณาติดต่อผู้ดูแลระบบ');
+        await supabase.auth.signOut({ scope: 'local' });
+        clearClientStorage();
+        setUser(null);
+        setProfile(null);
         setLoading(false);
-      });
+        return;
+      }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!isMounted) return;
-      syncAuthState(session?.user ?? null, event);
+      if (!nextProfile.is_active) {
+        setNotice('บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
+        await supabase.auth.signOut({ scope: 'local' });
+        clearClientStorage();
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      setUser(sessionUser);
+      setProfile(nextProfile);
+      setLoading(false);
+    }
+
+    void supabase.auth.getSession().then(({ data: { session } }) => syncSession(session?.user ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      void syncSession(session?.user ?? null);
     });
 
     return () => {
@@ -101,27 +107,45 @@ export function useAuthState(): AuthState {
     };
   }, []);
 
-  async function signIn(email: string, password: string): Promise<{ error: string | null }> {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
-    return { error: null };
+  async function signIn(email: string, password: string): Promise<AuthResult> {
+    setNotice(null);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+    return { error: error ? getThaiErrorMessage(error) : null };
   }
 
-  async function signInWithGoogle(): Promise<{ error: string | null }> {
+  async function signInWithGoogle(): Promise<AuthResult> {
+    setNotice(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
+      options: { redirectTo: window.location.origin },
     });
-    if (error) return { error: error.message };
-    return { error: null };
+    return { error: error ? getThaiErrorMessage(error, 'เชื่อมต่อ Google ไม่สำเร็จ') : null };
+  }
+
+  async function resetPassword(email: string): Promise<AuthResult> {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: `${window.location.origin}/set-password`,
+    });
+    return { error: error ? getThaiErrorMessage(error, 'ส่งลิงก์ตั้งรหัสผ่านใหม่ไม่สำเร็จ') : null };
   }
 
   async function signOut(): Promise<void> {
+    setNotice(null);
     await supabase.auth.signOut();
     clearClientStorage();
+    setUser(null);
+    setProfile(null);
   }
 
-  return { user, profile, loading, signIn, signInWithGoogle, signOut };
+  return {
+    user,
+    profile,
+    loading,
+    notice,
+    signIn,
+    signInWithGoogle,
+    resetPassword,
+    signOut,
+    clearNotice: () => setNotice(null),
+  };
 }

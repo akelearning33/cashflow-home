@@ -101,12 +101,12 @@ serve(async (req: Request) => {
     logEvent('token_validated', { requestId, callerId });
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('role')
+      .select('role, is_active')
       .eq('id', callerId)
       .single();
 
-    if (callerProfile?.role !== 'admin') {
-      logEvent('forbidden_non_admin', { requestId, callerId, role: callerProfile?.role ?? null });
+    if (callerProfile?.role !== 'admin' || !callerProfile.is_active) {
+      logEvent('forbidden_non_admin', { requestId, callerId, role: callerProfile?.role ?? null, isActive: callerProfile?.is_active ?? null });
       return new Response(JSON.stringify({ error: 'Forbidden: admin only' }), {
         status: 403,
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },

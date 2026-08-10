@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import type { Category, TransactionType } from '../types';
+import { getThaiErrorMessage } from '../utils/errors';
 
 export function useCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -12,80 +13,64 @@ export function useCategories() {
     setError(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError('Not authenticated');
-        setLoading(false);
-        return;
-      }
+      if (!user) throw new Error('Not authenticated');
 
-      // Explicitly filter: system defaults (user_id IS NULL) + current user's own categories only.
-      // This ensures admin cannot see other users' custom categories,
-      // even if RLS policies in the database are misconfigured.
       const { data, error: fetchError } = await supabase
         .from('categories')
-        .select('id, type, name, user_id')
+        .select('id, type, name, user_id, is_active')
         .or(`user_id.is.null,user_id.eq.${user.id}`)
+        .order('is_active', { ascending: false })
         .order('name');
-      if (fetchError) {
-        setError(fetchError.message);
-        return;
-      }
+      if (fetchError) throw fetchError;
       setCategories((data ?? []) as Category[]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load categories');
+    } catch (fetchError) {
+      setError(getThaiErrorMessage(fetchError, 'โหลดหมวดหมู่ไม่สำเร็จ'));
     } finally {
       setLoading(false);
     }
   }, []);
 
-  /** Add a user-owned category (user_id is set automatically) */
   const addCategory = useCallback(async (type: TransactionType, name: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-
-    const { data, error: insertError } = await supabase
+    const { error: insertError } = await supabase
       .from('categories')
-      .insert({ type, name, user_id: user.id })
-      .select();
-    if (insertError) throw new Error(insertError.message);
-    if (!data || data.length === 0) throw new Error('Failed to add category. Your session may have expired — please log in again.');
+      .insert({ type, name: name.trim(), user_id: user.id, is_active: true });
+    if (insertError) throw new Error(getThaiErrorMessage(insertError, 'เพิ่มหมวดหมู่ไม่สำเร็จ'));
   }, []);
 
-  /** Add a system default category (admin only, user_id = null) */
   const addSystemCategory = useCallback(async (type: TransactionType, name: string) => {
-    const { data, error: insertError } = await supabase
+    const { error: insertError } = await supabase
       .from('categories')
-      .insert({ type, name, user_id: null })
-      .select();
-    if (insertError) throw new Error(insertError.message);
-    if (!data || data.length === 0) throw new Error('Failed to add category. Your session may have expired — please log in again.');
+      .insert({ type, name: name.trim(), user_id: null, is_active: true });
+    if (insertError) throw new Error(getThaiErrorMessage(insertError, 'เพิ่มหมวดหมู่ระบบไม่สำเร็จ'));
   }, []);
 
   const updateCategory = useCallback(async (id: string, name: string) => {
-    const { data, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from('categories')
-      .update({ name })
-      .eq('id', id)
-      .select();
-    if (updateError) throw new Error(updateError.message);
-    if (!data || data.length === 0) throw new Error('Failed to update category. Your session may have expired — please log in again.');
-  }, []);
-
-  const deleteCategory = useCallback(async (id: string) => {
-    const { error: deleteError } = await supabase
-      .from('categories')
-      .delete()
+      .update({ name: name.trim() })
       .eq('id', id);
-    if (deleteError) throw new Error(deleteError.message);
+    if (updateError) throw new Error(getThaiErrorMessage(updateError, 'แก้ไขหมวดหมู่ไม่สำเร็จ'));
   }, []);
 
-  /** Helper: get categories split by system vs custom for a given type */
+  const setCategoryActive = useCallback(async (id: string, isActive: boolean) => {
+    const { error: updateError } = await supabase
+      .from('categories')
+      .update({ is_active: isActive })
+      .eq('id', id);
+    if (updateError) throw new Error(getThaiErrorMessage(updateError, isActive ? 'กู้คืนหมวดหมู่ไม่สำเร็จ' : 'เก็บหมวดหมู่ไม่สำเร็จ'));
+  }, []);
+
+  const archiveCategory = useCallback((id: string) => setCategoryActive(id, false), [setCategoryActive]);
+  const restoreCategory = useCallback((id: string) => setCategoryActive(id, true), [setCategoryActive]);
+
   const getCategoriesByType = useCallback(
-    (type: TransactionType) => {
-      const filtered = categories.filter((c) => c.type === type);
+    (type: TransactionType, includeArchived = false) => {
+      const filtered = categories.filter((category) => category.type === type && (includeArchived || category.is_active));
       return {
-        system: filtered.filter((c) => c.user_id === null),
-        custom: filtered.filter((c) => c.user_id !== null),
+        system: filtered.filter((category) => category.user_id === null),
+        custom: filtered.filter((category) => category.user_id !== null),
       };
     },
     [categories]
@@ -99,7 +84,8 @@ export function useCategories() {
     addCategory,
     addSystemCategory,
     updateCategory,
-    deleteCategory,
+    archiveCategory,
+    restoreCategory,
     getCategoriesByType,
   };
 }

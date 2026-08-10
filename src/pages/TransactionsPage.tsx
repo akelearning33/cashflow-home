@@ -1,257 +1,198 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Plus, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus, Search, Tags, Rows3, RotateCcw } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { TransactionItem } from '../components/TransactionItem';
-import { TransactionForm } from '../components/TransactionForm';
+import { TransactionDialog } from '../components/TransactionDialog';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { PeriodNavigator } from '../components/PeriodNavigator';
+import { useToast } from '../hooks/useToast';
 import { useTransactions } from '../hooks/useTransactions';
 import { formatCurrency } from '../utils/formatCurrency';
+import { formatLongDate } from '../utils/formatDate';
 import { getCategoryColor } from '../utils/categoryColors';
-import type { TransactionType } from '../types';
-
-const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
-const MONTHS = [
-  { value: 1, label: 'January' }, { value: 2, label: 'February' },
-  { value: 3, label: 'March' }, { value: 4, label: 'April' },
-  { value: 5, label: 'May' }, { value: 6, label: 'June' },
-  { value: 7, label: 'July' }, { value: 8, label: 'August' },
-  { value: 9, label: 'September' }, { value: 10, label: 'October' },
-  { value: 11, label: 'November' }, { value: 12, label: 'December' },
-];
+import { getPeriodFromDate } from '../utils/period';
+import { getThaiErrorMessage } from '../utils/errors';
+import type { Transaction, TransactionType } from '../types';
 
 type FilterType = TransactionType | 'all';
+type ViewMode = 'list' | 'category';
 
 export function TransactionsPage() {
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [month, setMonth] = useState(() => new Date().getMonth() + 1);
-  const [typeFilter, setTypeFilter] = useState<FilterType>('expense');
-  const [showForm, setShowForm] = useState(false);
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-  const { transactions, loading, error, fetchTransactions, deleteTransaction } = useTransactions();
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [typeFilter, setTypeFilter] = useState<FilterType>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { showToast } = useToast();
+  const { transactions, loading, error, fetchTransactions, softDeleteTransaction, restoreTransaction } = useTransactions();
 
   useEffect(() => {
-    fetchTransactions(year, month, typeFilter);
-  }, [year, month, typeFilter, fetchTransactions]);
+    void fetchTransactions(year, month, 'all');
+  }, [fetchTransactions, month, year]);
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const t of transactions) {
-      const signed = t.type === 'income' ? Number(t.amount) : -Number(t.amount);
-      map.set(t.category, (map.get(t.category) ?? 0) + signed);
+  useEffect(() => {
+    if (searchParams.get('add') !== '1') return;
+    setEditingTransaction(null);
+    setDialogOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('add');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const categoryOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const transaction of transactions) {
+      const key = transaction.category_id ?? `legacy:${transaction.type}:${transaction.category}`;
+      map.set(key, transaction.category);
     }
-    const absTotal = Array.from(map.values()).reduce((s, v) => s + Math.abs(v), 0);
-    return Array.from(map.entries())
-      .map(([category, amount]) => ({
-        category,
-        amount,
-        pct: absTotal > 0 ? Math.round((Math.abs(amount) / absTotal) * 100) : 0,
-        items: transactions.filter((t) => t.category === category),
-      }))
-      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'th'));
   }, [transactions]);
 
-  const total = useMemo(
-    () => transactions.reduce((s, t) => s + (t.type === 'income' ? Number(t.amount) : -Number(t.amount)), 0),
-    [transactions]
-  );
+  const filteredTransactions = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('th');
+    return transactions.filter((transaction) => {
+      const categoryKey = transaction.category_id ?? `legacy:${transaction.type}:${transaction.category}`;
+      return (typeFilter === 'all' || transaction.type === typeFilter)
+        && (categoryFilter === 'all' || categoryKey === categoryFilter)
+        && (!query || transaction.category.toLocaleLowerCase('th').includes(query) || transaction.note?.toLocaleLowerCase('th').includes(query));
+    });
+  }, [categoryFilter, search, transactions, typeFilter]);
 
-  async function handleDelete(id: string) {
+  const groupedByDate = useMemo(() => {
+    const map = new Map<string, Transaction[]>();
+    for (const transaction of filteredTransactions) {
+      map.set(transaction.date, [...(map.get(transaction.date) ?? []), transaction]);
+    }
+    return Array.from(map.entries());
+  }, [filteredTransactions]);
+
+  const categorySummary = useMemo(() => {
+    const map = new Map<string, { name: string; type: TransactionType; amount: number; count: number }>();
+    for (const transaction of filteredTransactions) {
+      const key = `${transaction.type}:${transaction.category_id ?? transaction.category}`;
+      const current = map.get(key) ?? { name: transaction.category, type: transaction.type, amount: 0, count: 0 };
+      current.amount += Number(transaction.amount);
+      current.count += 1;
+      map.set(key, current);
+    }
+    return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+  }, [filteredTransactions]);
+
+  const totals = useMemo(() => filteredTransactions.reduce((sum, transaction) => {
+    if (transaction.type === 'income') sum.income += Number(transaction.amount);
+    else sum.expense += Number(transaction.amount);
+    return sum;
+  }, { income: 0, expense: 0 }), [filteredTransactions]);
+
+  function openAdd() {
+    setEditingTransaction(null);
+    setDialogOpen(true);
+  }
+
+  function openEdit(transaction: Transaction) {
+    setEditingTransaction(transaction);
+    setDialogOpen(true);
+  }
+
+  async function handleSaved(transaction: Transaction) {
+    const period = getPeriodFromDate(transaction.date);
+    setYear(period.year);
+    setMonth(period.month);
+    setDialogOpen(false);
+    setEditingTransaction(null);
+    await fetchTransactions(period.year, period.month, 'all');
+    showToast(editingTransaction ? 'บันทึกการแก้ไขแล้ว' : 'เพิ่มรายการแล้ว');
+    window.setTimeout(() => document.getElementById(`transaction-${transaction.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleting(true);
     try {
-      await deleteTransaction(id);
-      fetchTransactions(year, month, typeFilter);
-    } catch (err) {
-      alert('Failed to delete transaction. Please try again.');
-      throw err;
+      await softDeleteTransaction(target.id);
+      setDeleteTarget(null);
+      await fetchTransactions(year, month, 'all');
+      showToast('ลบรายการแล้ว', {
+        actionLabel: 'เลิกทำ',
+        onAction: async () => {
+          await restoreTransaction(target.id);
+          await fetchTransactions(year, month, 'all');
+          showToast('กู้คืนรายการแล้ว');
+        },
+      });
+    } catch (deleteError) {
+      showToast(getThaiErrorMessage(deleteError, 'ลบรายการไม่สำเร็จ'), { tone: 'error' });
+    } finally {
+      setDeleting(false);
     }
   }
 
-  function handleTransactionAdded() {
-    setShowForm(false);
-    fetchTransactions(year, month, typeFilter);
-  }
-
-  const monthLabel = MONTHS.find((m) => m.value === month)?.label ?? '';
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 pb-24 sm:pb-0">
       <Navbar />
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-900">Transactions</h1>
-          <button
-            onClick={() => setShowForm((o) => !o)}
-            className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-          >
-            {showForm ? <X size={16} /> : <Plus size={16} />}
-            {showForm ? 'Cancel' : 'Add'}
+      <main className="mx-auto max-w-4xl space-y-5 px-4 py-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-900">รายการรับ–จ่าย</h1>
+            <p className="mt-1 text-sm text-slate-500">ค้นหา แก้ไข และตรวจสอบรายการของคุณ</p>
+          </div>
+          <button type="button" onClick={openAdd} className="hidden min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white shadow-lg shadow-indigo-600/15 hover:bg-indigo-700 sm:flex">
+            <Plus size={18} /> เพิ่มรายการ
           </button>
         </div>
 
-        {/* Add form */}
-        {showForm && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">New Transaction</h2>
-            <TransactionForm onSuccess={handleTransactionAdded} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <PeriodNavigator year={year} month={month} onChange={(nextYear, nextMonth) => { setYear(nextYear); setMonth(nextMonth); }} />
+          <div className="grid grid-cols-2 rounded-xl bg-slate-200/70 p-1">
+            <button type="button" onClick={() => setViewMode('list')} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold ${viewMode === 'list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`} aria-pressed={viewMode === 'list'}><Rows3 size={16} /> รายการ</button>
+            <button type="button" onClick={() => setViewMode('category')} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold ${viewMode === 'category' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`} aria-pressed={viewMode === 'category'}><Tags size={16} /> ตามหมวด</button>
           </div>
-        )}
-
-        {/* Main card */}
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-
-          {/* Expense / Income / All tabs */}
-          <div className="flex border-b border-gray-100">
-            {([
-              { value: 'expense', label: 'Expenses', indicator: '', indicatorClass: 'text-red-500' },
-              { value: 'income',  label: 'Income',   indicator: '', indicatorClass: 'text-green-500' },
-              { value: 'all',     label: 'All',      indicator: null, indicatorClass: '' },
-            ] as { value: FilterType; label: string; indicator: string | null; indicatorClass: string }[]).map(({ value, label, indicator, indicatorClass }) => (
-              <button
-                key={value}
-                onClick={() => { setTypeFilter(value); setExpandedCategory(null); }}
-                className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-                  typeFilter === value
-                    ? value === 'expense'
-                      ? 'text-red-600 border-b-2 border-red-500'
-                      : value === 'income'
-                      ? 'text-green-600 border-b-2 border-green-500'
-                      : 'text-indigo-600 border-b-2 border-indigo-500'
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {indicator && <span className={`mr-1 ${indicatorClass}`}>{indicator}</span>}
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Month / Year selectors */}
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
-            <select
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {MONTHS.map((m) => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-            <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {YEARS.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Loading skeleton */}
-          {loading && (
-            <div className="p-4 space-y-3">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
-              ))}
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <p className="text-red-600 text-sm bg-red-50 px-4 py-3">{error}</p>
-          )}
-
-          {/* Empty state */}
-          {!loading && !error && grouped.length === 0 && (
-            <div className="text-center py-12 text-gray-400 text-sm">
-              No transactions found for this period.
-            </div>
-          )}
-
-          {/* Content */}
-          {!loading && !error && grouped.length > 0 && (
-            <>
-              {/* Total */}
-              <div className="px-4 pt-4 pb-2">
-                <p className={`text-2xl font-bold ${total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {total < 0 ? '–' : '+'}{formatCurrency(Math.abs(total))}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">{monthLabel} {year}</p>
-              </div>
-
-              {/* Segmented bar */}
-              <div className="px-4 pb-4">
-                <div className="flex h-3 rounded-full overflow-hidden gap-px">
-                  {grouped.map((g, i) => (
-                    <div
-                      key={g.category}
-                      title={`${g.category} ${g.pct}%`}
-                      style={{
-                        width: `${g.pct}%`,
-                        backgroundColor: getCategoryColor(g.category, i),
-                        minWidth: g.pct > 0 ? '3px' : '0',
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Category rows */}
-              <div className="divide-y divide-gray-50">
-                {grouped.map((g, i) => (
-                  <div key={g.category}>
-                    <button
-                      className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left"
-                      onClick={() =>
-                        setExpandedCategory(expandedCategory === g.category ? null : g.category)
-                      }
-                    >
-                      {/* Category color avatar */}
-                      <div
-                        className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-white text-sm font-bold"
-                        style={{ backgroundColor: getCategoryColor(g.category, i) }}
-                      >
-                        {g.category.charAt(0).toUpperCase()}
-                      </div>
-
-                      {/* Name */}
-                      <span className="flex-1 text-sm font-medium text-gray-800">
-                        {g.category}
-                      </span>
-
-                      {/* Percentage */}
-                      <span className="text-sm text-gray-400 w-10 text-right">{g.pct}%</span>
-
-                      {/* Amount */}
-                      <span className={`text-sm font-semibold w-28 text-right ${
-                        g.amount >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {g.amount >= 0 ? '+' : '–'}
-                        {formatCurrency(Math.abs(g.amount))}
-                      </span>
-
-                      {/* Expand icon */}
-                      {expandedCategory === g.category
-                        ? <ChevronUp size={15} className="text-gray-400 flex-shrink-0" />
-                        : <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
-                      }
-                    </button>
-
-                    {/* Individual transactions (expanded) */}
-                    {expandedCategory === g.category && (
-                      <div className="bg-gray-50 divide-y divide-gray-100">
-                        {g.items.map((t) => (
-                          <TransactionItem key={t.id} transaction={t} onDelete={handleDelete} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
         </div>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="ตัวกรองรายการ">
+          <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+            <label className="relative block">
+              <span className="sr-only">ค้นหารายการ</span>
+              <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" placeholder="ค้นหาหมวดหมู่หรือหมายเหตุ" />
+            </label>
+            <select aria-label="กรองประเภทรายการ" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as FilterType)} className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100">
+              <option value="all">รับ–จ่ายทั้งหมด</option><option value="expense">รายจ่าย</option><option value="income">รายรับ</option>
+            </select>
+            <select aria-label="กรองหมวดหมู่" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100">
+              <option value="all">ทุกหมวดหมู่</option>{categoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="grid grid-cols-3 gap-3 border-b border-slate-100 p-4 text-center">
+            <div><p className="text-xs text-slate-400">รายรับ</p><p className="mt-1 text-sm font-extrabold text-emerald-600">+{formatCurrency(totals.income)}</p></div>
+            <div><p className="text-xs text-slate-400">รายจ่าย</p><p className="mt-1 text-sm font-extrabold text-rose-600">−{formatCurrency(totals.expense)}</p></div>
+            <div><p className="text-xs text-slate-400">สุทธิ</p><p className={`mt-1 text-sm font-extrabold ${totals.income - totals.expense >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatCurrency(totals.income - totals.expense)}</p></div>
+          </div>
+
+          {loading && <div className="space-y-3 p-4">{Array.from({ length: 5 }, (_, index) => <div key={index} className="h-16 animate-pulse rounded-xl bg-slate-100" />)}</div>}
+          {!loading && error && <div className="p-6 text-center"><p className="text-sm font-medium text-rose-700">{error}</p><button type="button" onClick={() => void fetchTransactions(year, month, 'all')} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-50 px-4 text-sm font-bold text-rose-700"><RotateCcw size={16} /> ลองใหม่</button></div>}
+          {!loading && !error && filteredTransactions.length === 0 && <div className="px-6 py-14 text-center"><p className="font-bold text-slate-700">ยังไม่พบรายการ</p><p className="mt-1 text-sm text-slate-400">ลองเปลี่ยนตัวกรอง หรือเพิ่มรายการแรกของเดือนนี้</p><button type="button" onClick={openAdd} className="mt-4 min-h-11 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white"><Plus size={17} className="mr-1 inline" /> เพิ่มรายการ</button></div>}
+
+          {!loading && !error && filteredTransactions.length > 0 && viewMode === 'list' && <div>{groupedByDate.map(([date, items]) => <div key={date} className="border-b border-slate-100 last:border-0"><div className="flex items-center justify-between bg-slate-50 px-4 py-2"><h2 className="text-xs font-bold text-slate-600">{formatLongDate(date)}</h2><span className="text-xs text-slate-400">{items.length} รายการ</span></div><div className="divide-y divide-slate-50 px-1">{items.map((transaction) => <TransactionItem key={transaction.id} transaction={transaction} onEdit={openEdit} onDelete={setDeleteTarget} compact />)}</div></div>)}</div>}
+
+          {!loading && !error && filteredTransactions.length > 0 && viewMode === 'category' && <div className="divide-y divide-slate-100 p-2">{categorySummary.map((summary, index) => <div key={`${summary.type}:${summary.name}`} className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-slate-50"><span className="h-10 w-10 rounded-full" style={{ backgroundColor: getCategoryColor(summary.name, index) }} aria-hidden="true" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-800">{summary.name}</p><p className="text-xs text-slate-400">{summary.count} รายการ · {summary.type === 'income' ? 'รายรับ' : 'รายจ่าย'}</p></div><p className={`text-sm font-extrabold ${summary.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>{summary.type === 'income' ? '+' : '−'}{formatCurrency(summary.amount)}</p></div>)}</div>}
+        </section>
       </main>
+
+      <TransactionDialog open={dialogOpen} year={year} month={month} transaction={editingTransaction} onClose={() => { setDialogOpen(false); setEditingTransaction(null); }} onSaved={handleSaved} />
+      <ConfirmDialog open={Boolean(deleteTarget)} title="ลบรายการนี้หรือไม่?" description={deleteTarget ? `${deleteTarget.category} จำนวน ${formatCurrency(deleteTarget.amount)} จะถูกซ่อน และสามารถเลิกทำได้หลังลบ` : ''} confirmLabel="ลบรายการ" loading={deleting} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
     </div>
   );
 }

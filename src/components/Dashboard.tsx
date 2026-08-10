@@ -1,241 +1,59 @@
-import { useEffect, useState } from 'react';
-import { TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ReceiptText, Wallet } from 'lucide-react';
 import type { Transaction } from '../types';
-import { supabase } from '../lib/supabaseClient';
 import { formatCurrency } from '../utils/formatCurrency';
-import { formatMonthYear } from '../utils/formatDate';
+import { getCategoryColor } from '../utils/categoryColors';
+import { TransactionItem } from './TransactionItem';
 
 interface Props {
   transactions: Transaction[];
-  selectedYear: number;
-  selectedMonth: number;
+  onEdit: (transaction: Transaction) => void;
+  onDelete: (transaction: Transaction) => void;
+  onAdd: () => void;
 }
 
-export function Dashboard({ transactions, selectedYear, selectedMonth }: Props) {
-  const [yearlyIncome, setYearlyIncome] = useState(0);
-  const [yearlyExpense, setYearlyExpense] = useState(0);
+export function Dashboard({ transactions, onEdit, onDelete, onAdd }: Props) {
+  const income = transactions.filter((transaction) => transaction.type === 'income').reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+  const expense = transactions.filter((transaction) => transaction.type === 'expense').reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+  const net = income - expense;
+  const recent = transactions.slice(0, 5);
 
-  const totalIncome = transactions
-    .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + Number(t.amount), 0);
-
-  const totalExpense = transactions
-    .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + Number(t.amount), 0);
-
-  const netBalance = totalIncome - totalExpense;
-  const yearlyNetBalance = yearlyIncome - yearlyExpense;
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadYearlyTotals() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !isMounted) {
-        setYearlyIncome(0);
-        setYearlyExpense(0);
-        return;
-      }
-
-      const { data: rows, error } = await supabase
-        .from('transactions')
-        .select('type, amount, date')
-        .eq('user_id', user.id)
-        .gte('date', `${selectedYear}-01-01`)
-        .lte('date', `${selectedYear}-12-31`);
-
-      if (error || !rows || !isMounted) {
-        setYearlyIncome(0);
-        setYearlyExpense(0);
-        return;
-      }
-
-      const income = rows
-        .filter((row) => row.type === 'income')
-        .reduce((sum, row) => sum + Number(row.amount), 0);
-
-      const expense = rows
-        .filter((row) => row.type === 'expense')
-        .reduce((sum, row) => sum + Number(row.amount), 0);
-
-      setYearlyIncome(income);
-      setYearlyExpense(expense);
-    }
-
-    void loadYearlyTotals();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedYear, transactions]);
+  const categoryMap = new Map<string, number>();
+  for (const transaction of transactions.filter((item) => item.type === 'expense')) {
+    categoryMap.set(transaction.category, (categoryMap.get(transaction.category) ?? 0) + Number(transaction.amount));
+  }
+  const topCategories = Array.from(categoryMap, ([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount).slice(0, 4);
 
   return (
-    <div className="space-y-8">
-      {/* Monthly Section */}
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-800">
-            Monthly Summary
-          </h2>
-          <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-            {formatMonthYear(selectedYear, selectedMonth)}
-          </span>
-        </div>
-        
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          {/* Net Balance Card - High Contrast */}
-          <div
-            className="rounded-2xl p-6 md:col-span-2 bg-slate-900 shadow-lg shadow-slate-900/20 flex flex-col justify-between"
-            style={{ animation: 'fadeSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 0ms both' }}
-          >
-            <div className="mb-8 flex items-start justify-between">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Net Balance
-                </span>
-                <p className="text-sm text-slate-500 mt-1">Available funds this month</p>
-              </div>
-              <div className="rounded-xl bg-white/10 p-2.5 text-white backdrop-blur-sm">
-                <Wallet size={20} strokeWidth={2.5} />
-              </div>
-            </div>
-            <p
-              className={`text-4xl sm:text-5xl font-black tracking-tight ${
-                netBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'
-              }`}
-            >
-              {netBalance < 0 ? '-' : '+'}
-              {formatCurrency(Math.abs(netBalance))}
-            </p>
+    <div className="space-y-5">
+      <section className="grid gap-4 md:grid-cols-4" aria-label="สรุปยอดประจำเดือน">
+        <article className="flex min-h-44 flex-col justify-between rounded-3xl bg-slate-900 p-6 text-white shadow-xl shadow-slate-900/15 md:col-span-2">
+          <div className="flex items-start justify-between">
+            <div><p className="text-xs font-bold uppercase tracking-widest text-slate-400">ยอดสุทธิเดือนนี้</p><p className="mt-1 text-sm text-slate-400">รายรับหักรายจ่ายที่บันทึกไว้</p></div>
+            <span className="rounded-xl bg-white/10 p-2.5"><Wallet size={20} /></span>
           </div>
-
-          {/* Total Income Card */}
-          <div 
-            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-            style={{ animation: 'premiumSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 100ms both' }}
-          >
-            <div className="mb-8 flex items-start justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
-                Total Income
-              </span>
-              <div className="rounded-xl bg-emerald-50 p-2 text-emerald-600">
-                <TrendingUp size={18} strokeWidth={2.5} />
-              </div>
-            </div>
-            <p className="text-2xl font-extrabold tracking-tight text-emerald-600">
-              +{formatCurrency(totalIncome)}
-            </p>
-          </div>
-
-          {/* Total Expense Card */}
-          <div 
-            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-            style={{ animation: 'premiumSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 150ms both' }}
-          >
-            <div className="mb-8 flex items-start justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
-                Total Expense
-              </span>
-              <div className="rounded-xl bg-rose-50 p-2 text-rose-600">
-                <TrendingDown size={18} strokeWidth={2.5} />
-              </div>
-            </div>
-            <p className="text-2xl font-extrabold tracking-tight text-rose-600">
-              -{formatCurrency(totalExpense)}
-            </p>
-          </div>
-        </div>
+          <p className={`mt-8 text-4xl font-black tracking-tight sm:text-5xl ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{net >= 0 ? '+' : '−'}{formatCurrency(Math.abs(net))}</p>
+        </article>
+        <article className="flex min-h-44 flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">รายรับ</p><span className="rounded-xl bg-emerald-50 p-2 text-emerald-600"><ArrowUpRight size={18} /></span></div>
+          <p className="text-2xl font-black text-emerald-600">+{formatCurrency(income)}</p>
+        </article>
+        <article className="flex min-h-44 flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">รายจ่าย</p><span className="rounded-xl bg-rose-50 p-2 text-rose-600"><ArrowDownRight size={18} /></span></div>
+          <p className="text-2xl font-black text-rose-600">−{formatCurrency(expense)}</p>
+        </article>
       </section>
 
-      {/* Yearly Section */}
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-800">
-            Yearly Overview
-          </h2>
-          <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-            {selectedYear}
-          </span>
-        </div>
+      <section className="grid gap-5 lg:grid-cols-2">
+        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between"><div><h2 className="font-bold text-slate-800">หมวดรายจ่ายสูงสุด</h2><p className="text-xs text-slate-400">เรียงจากยอดใช้จ่ายมากที่สุด</p></div></div>
+          {topCategories.length === 0 ? <div className="py-10 text-center text-sm text-slate-400">ยังไม่มีรายจ่ายในเดือนนี้</div> : <div className="space-y-4">{topCategories.map((category, index) => { const percentage = expense ? Math.round((category.amount / expense) * 100) : 0; return <div key={category.name}><div className="mb-1.5 flex items-center justify-between gap-3"><span className="truncate text-sm font-bold text-slate-700">{category.name}</span><span className="text-sm font-extrabold text-rose-600">{formatCurrency(category.amount)}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: getCategoryColor(category.name, index) }} /></div><p className="mt-1 text-right text-[11px] text-slate-400">{percentage}% ของรายจ่าย</p></div>; })}</div>}
+        </article>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <div
-            className="rounded-2xl p-6 md:col-span-2 bg-slate-900 shadow-lg shadow-slate-900/20 flex flex-col justify-between"
-            style={{ animation: 'fadeSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 225ms both' }}
-          >
-            <div className="mb-8 flex items-start justify-between">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Total Net Balance
-                </span>
-                <p className="text-sm text-slate-500 mt-1">Accumulated for {selectedYear}</p>
-              </div>
-              <div className="rounded-xl bg-white/10 p-2.5 text-white backdrop-blur-sm">
-                <Wallet size={20} strokeWidth={2.5} />
-              </div>
-            </div>
-            <p
-              className={`text-4xl sm:text-5xl font-black tracking-tight ${
-                yearlyNetBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'
-              }`}
-            >
-              {yearlyNetBalance < 0 ? '-' : '+'}
-              {formatCurrency(Math.abs(yearlyNetBalance))}
-            </p>
-          </div>
-
-          {/* Yearly Income Card */}
-          <div 
-            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-            style={{ animation: 'premiumSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 250ms both' }}
-          >
-            <div className="mb-8 flex items-start justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
-                Total Income
-              </span>
-              <div className="rounded-xl bg-emerald-50 p-2 text-emerald-600">
-                <TrendingUp size={18} strokeWidth={2.5} />
-              </div>
-            </div>
-            <p className="text-2xl font-extrabold tracking-tight text-emerald-600">
-              +{formatCurrency(yearlyIncome)}
-            </p>
-          </div>
-
-          {/* Yearly Expense Card */}
-          <div 
-            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-            style={{ animation: 'premiumSlideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both' }}
-          >
-            <div className="mb-8 flex items-start justify-between">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
-                Total Expense
-              </span>
-              <div className="rounded-xl bg-rose-50 p-2 text-rose-600">
-                <TrendingDown size={18} strokeWidth={2.5} />
-              </div>
-            </div>
-            <p className="text-2xl font-extrabold tracking-tight text-rose-600">
-              -{formatCurrency(yearlyExpense)}
-            </p>
-          </div>
-        </div>
+        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-800">รายการล่าสุด</h2><p className="text-xs text-slate-400">5 รายการล่าสุดในเดือนนี้</p></div><ReceiptText size={19} className="text-slate-400" /></div>
+          {recent.length === 0 ? <div className="px-6 py-10 text-center"><p className="text-sm text-slate-400">ยังไม่มีรายการ</p><button type="button" onClick={onAdd} className="mt-3 min-h-11 rounded-xl bg-indigo-50 px-4 text-sm font-bold text-indigo-700">เพิ่มรายการแรก</button></div> : <div className="divide-y divide-slate-50 p-1">{recent.map((transaction) => <TransactionItem key={transaction.id} transaction={transaction} onEdit={onEdit} onDelete={onDelete} compact />)}</div>}
+        </article>
       </section>
-      
-      <style>
-        {`
-          @keyframes fadeSlideUp {
-            from {
-              opacity: 0;
-              transform: translateY(16px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
-        `}
-      </style>
     </div>
   );
 }

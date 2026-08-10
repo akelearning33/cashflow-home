@@ -1,121 +1,54 @@
-import { useEffect, useState } from 'react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
-import { supabase } from '../lib/supabaseClient';
-import type { MonthlyChartData } from '../types';
+import { useMemo } from 'react';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import type { Transaction } from '../types';
+import { formatCurrency } from '../utils/formatCurrency';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
 interface Props {
   year: number;
-  month: number;
-  refreshToken?: number;
+  highlightedMonth: number;
+  transactions: Transaction[];
 }
 
-export function Chart({ year, month, refreshToken = 0 }: Props) {
-  const [data, setData] = useState<MonthlyChartData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) { setError('Not authenticated'); return; }
-
-        const { data: rows, error: fetchError } = await supabase
-          .from('transactions')
-          .select('type, amount, date')
-          .eq('user_id', user.id)
-          .gte('date', `${year}-01-01`)
-          .lte('date', `${year}-12-31`);
-
-        if (fetchError || !rows) { setError(fetchError?.message ?? 'Failed to load chart data'); return; }
-
-        const monthly: MonthlyChartData[] = MONTHS.map((m) => ({
-          month: m,
-          income: 0,
-          expense: 0,
-        }));
-
-        for (const row of rows) {
-          const monthIndex = parseInt(row.date.slice(5, 7), 10) - 1;
-          if (row.type === 'income') monthly[monthIndex].income += Number(row.amount);
-          else monthly[monthIndex].expense += Number(row.amount);
-        }
-
-        setData(monthly);
-      } finally {
-        setLoading(false);
-      }
+export function Chart({ year, highlightedMonth, transactions }: Props) {
+  const data = useMemo(() => {
+    const monthly = MONTHS.map((label) => ({ month: label, income: 0, expense: 0 }));
+    for (const transaction of transactions) {
+      const monthIndex = Number(transaction.date.slice(5, 7)) - 1;
+      if (!monthly[monthIndex]) continue;
+      monthly[monthIndex][transaction.type] += Number(transaction.amount);
     }
-    load();
-  }, [year, month, refreshToken]);
-
-  if (loading) {
-    return <div className="h-64 bg-gray-100 rounded-2xl animate-pulse" />;
-  }
-
-  if (error) {
-    return (
-      <div className="bg-white rounded-2xl border border-gray-200 p-4">
-        <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          {error}
-        </p>
-      </div>
-    );
-  }
+    return monthly;
+  }, [transactions]);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      <h2 className="text-sm font-semibold text-gray-700 mb-4">
-        Monthly Overview — {year}
-      </h2>
-      <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={data} margin={{ top: 4, right: 8, left: 8, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-          <YAxis
-            tick={{ fontSize: 11 }}
-            tickFormatter={(v) => `฿${(v / 1000).toFixed(0)}k`}
-            width={52}
-          />
-          <Tooltip
-            formatter={(value) => {
-              const num = Number(value);
-              return `฿${num.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`;
-            }}
-          />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar
-            dataKey="income"
-            name="Income"
-            shape={(props: any) => {
-              const { x, y, width, height, index } = props;
-              return <rect x={x} y={y} width={width} height={Math.max(0, height)} rx={4} fill={index === month - 1 ? '#16a34a' : '#86efac'} />;
-            }}
-          />
-          <Bar
-            dataKey="expense"
-            name="Expense"
-            shape={(props: any) => {
-              const { x, y, width, height, index } = props;
-              return <rect x={x} y={y} width={width} height={Math.max(0, height)} rx={4} fill={index === month - 1 ? '#dc2626' : '#fca5a5'} />;
-            }}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="year-chart-title">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 id="year-chart-title" className="font-bold text-slate-800">ภาพรวมรายปี</h2>
+          <p className="text-xs text-slate-400">เปรียบเทียบรายรับและรายจ่ายรายเดือน</p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-600">ค.ศ. {year}</span>
+      </div>
+      <div aria-hidden="true">
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+            <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(value) => `฿${Math.round(Number(value) / 1000)}k`} width={48} axisLine={false} tickLine={false} />
+            <Tooltip formatter={(value) => formatCurrency(Number(value))} cursor={{ fill: '#f8fafc' }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="income" name="รายรับ" radius={[4, 4, 0, 0]}>{data.map((_, index) => <Cell key={`income-${index}`} fill={index === highlightedMonth - 1 ? '#059669' : '#a7f3d0'} />)}</Bar>
+            <Bar dataKey="expense" name="รายจ่าย" radius={[4, 4, 0, 0]}>{data.map((_, index) => <Cell key={`expense-${index}`} fill={index === highlightedMonth - 1 ? '#e11d48' : '#fecdd3'} />)}</Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <table className="sr-only">
+        <caption>ตารางรายรับและรายจ่ายแต่ละเดือนของปี {year}</caption>
+        <thead><tr><th>เดือน</th><th>รายรับ</th><th>รายจ่าย</th></tr></thead>
+        <tbody>{data.map((row) => <tr key={row.month}><th>{row.month}</th><td>{formatCurrency(row.income)}</td><td>{formatCurrency(row.expense)}</td></tr>)}</tbody>
+      </table>
+    </section>
   );
 }

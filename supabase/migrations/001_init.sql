@@ -18,7 +18,19 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 );
 
 -- ----------------------------------------------------------------
--- 2. TRANSACTIONS TABLE
+-- 2. CATEGORIES TABLE
+--    Base table must exist before 002_user_categories.sql extends it.
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.categories (
+  id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  type        TEXT        NOT NULL CHECK (type IN ('income', 'expense')),
+  name        TEXT        NOT NULL,
+  user_id     UUID        REFERENCES public.profiles(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- ----------------------------------------------------------------
+-- 3. TRANSACTIONS TABLE
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.transactions (
   id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -39,13 +51,14 @@ CREATE INDEX IF NOT EXISTS idx_transactions_date
   ON public.transactions (date DESC);
 
 -- ----------------------------------------------------------------
--- 3. ENABLE ROW LEVEL SECURITY
+-- 4. ENABLE ROW LEVEL SECURITY
 -- ----------------------------------------------------------------
 ALTER TABLE public.profiles    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 
 -- ----------------------------------------------------------------
--- 4. RLS POLICIES — profiles
+-- 5. RLS POLICIES — profiles
 -- ----------------------------------------------------------------
 
 -- Any authenticated user can read their own profile
@@ -80,7 +93,7 @@ CREATE POLICY "profiles: insert own"
   WITH CHECK (auth.uid() = id);
 
 -- ----------------------------------------------------------------
--- 5. RLS POLICIES — transactions
+-- 6. RLS POLICIES — transactions
 -- ----------------------------------------------------------------
 
 -- Member: full CRUD on own transactions
@@ -111,7 +124,7 @@ CREATE POLICY "transactions: admin select all"
   );
 
 -- ----------------------------------------------------------------
--- 6. AUTO-CREATE PROFILE ON SIGNUP (trigger)
+-- 7. AUTO-CREATE PROFILE ON SIGNUP (trigger)
 --    Fires when a new row is inserted into auth.users.
 --    The invite-user Edge Function also upserts the profile,
 --    so this is a safety net for direct sign-up flows.
