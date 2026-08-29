@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { Plus, RotateCcw } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Plus, RotateCcw, Wallet } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Dashboard } from '../components/Dashboard';
 import { TransactionDialog } from '../components/TransactionDialog';
@@ -33,6 +33,17 @@ export function DashboardPage() {
     () => transactions.filter((transaction) => Number(transaction.date.slice(5, 7)) === month),
     [month, transactions]
   );
+  const yearlyTotals = useMemo(
+    () => transactions.reduce(
+      (totals, transaction) => {
+        totals[transaction.type] += Number(transaction.amount);
+        return totals;
+      },
+      { income: 0, expense: 0 }
+    ),
+    [transactions]
+  );
+  const yearlyNet = yearlyTotals.income - yearlyTotals.expense;
 
   function openAdd() {
     setEditingTransaction(null);
@@ -82,6 +93,41 @@ export function DashboardPage() {
         {loading && <div className="grid gap-4 md:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className={`h-44 animate-pulse rounded-3xl bg-slate-200 ${index === 0 ? 'md:col-span-2' : ''}`} />)}</div>}
         {!loading && error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center"><p className="text-sm font-medium text-rose-700">{error}</p><button type="button" onClick={() => void fetchYearTransactions(year)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-rose-700"><RotateCcw size={16} /> ลองใหม่</button></div>}
         {!loading && !error && <Dashboard transactions={monthlyTransactions} onEdit={openEdit} onDelete={setDeleteTarget} onAdd={openAdd} />}
+
+        {!loading && !error && (
+          <section className="grid gap-4 md:grid-cols-3" aria-label="สรุปยอดรายปี">
+            <article className={`flex min-h-32 flex-col justify-between rounded-2xl border bg-white p-5 shadow-sm ${yearlyNet >= 0 ? 'border-emerald-100' : 'border-rose-100'}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-500">สุทธิทั้งปี</p>
+                  <p className="mt-1 text-xs text-slate-400">ค.ศ. {year}</p>
+                </div>
+                <span className={`rounded-xl p-2 ${yearlyNet >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Wallet size={18} /></span>
+              </div>
+              <p className={`mt-4 text-2xl font-black ${yearlyNet >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{yearlyNet >= 0 ? '+' : '−'}{formatCurrency(Math.abs(yearlyNet))}</p>
+            </article>
+            <article className="flex min-h-32 flex-col justify-between rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-500">รายรับทั้งปี</p>
+                  <p className="mt-1 text-xs text-slate-400">ค.ศ. {year}</p>
+                </div>
+                <span className="rounded-xl bg-emerald-50 p-2 text-emerald-600"><ArrowUpRight size={18} /></span>
+              </div>
+              <p className="mt-4 text-2xl font-black text-emerald-600">+{formatCurrency(yearlyTotals.income)}</p>
+            </article>
+            <article className="flex min-h-32 flex-col justify-between rounded-2xl border border-rose-100 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-500">รายจ่ายทั้งปี</p>
+                  <p className="mt-1 text-xs text-slate-400">ค.ศ. {year}</p>
+                </div>
+                <span className="rounded-xl bg-rose-50 p-2 text-rose-600"><ArrowDownRight size={18} /></span>
+              </div>
+              <p className="mt-4 text-2xl font-black text-rose-600">−{formatCurrency(yearlyTotals.expense)}</p>
+            </article>
+          </section>
+        )}
 
         {!loading && !error && <Suspense fallback={<div className="h-72 animate-pulse rounded-2xl bg-slate-200" />}><Chart year={year} highlightedMonth={month} transactions={transactions} /></Suspense>}
       </main>
