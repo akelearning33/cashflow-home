@@ -9,6 +9,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ def
 const SetPasswordPage = lazy(() => import('./pages/SetPasswordPage').then((module) => ({ default: module.SetPasswordPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
 const TransactionsPage = lazy(() => import('./pages/TransactionsPage').then((module) => ({ default: module.TransactionsPage })));
+const RecurringPage = lazy(() => import('./pages/RecurringPage').then((module) => ({ default: module.RecurringPage })));
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage').then((module) => ({ default: module.CategoriesPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })));
 
@@ -28,6 +29,7 @@ export default function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/transactions" element={<TransactionsPage />} />
+                <Route path="/recurring" element={<RecurringPage />} />
                 <Route path="/categories" element={<CategoriesPage />} />
                 <Route element={<AdminRoute />}><Route path="/admin" element={<AdminPage />} /></Route>
               </Route>

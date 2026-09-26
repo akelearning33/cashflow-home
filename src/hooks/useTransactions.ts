@@ -22,6 +22,7 @@ interface TransactionRow extends Omit<Transaction, 'category'> {
 }
 
 const TRANSACTION_SELECT = '*, category_details:categories!transactions_category_id_fkey(name)';
+const TRANSACTION_PAGE_SIZE = 500;
 
 function normalizeTransaction(row: TransactionRow): Transaction {
   const { category_details, ...transaction } = row;
@@ -31,6 +32,9 @@ function normalizeTransaction(row: TransactionRow): Transaction {
     amount: Number(row.amount),
     category: relation?.name ?? row.category,
     category_id: row.category_id ?? null,
+    recurring_transaction_id: row.recurring_transaction_id ?? null,
+    recurring_month: row.recurring_month ?? null,
+    recurring_name: row.recurring_name ?? null,
     deleted_at: row.deleted_at ?? null,
   };
 }
@@ -53,21 +57,35 @@ export function useTransactions(): UseTransactionsReturn {
     setError(null);
     try {
       const user = await getAuthenticatedUser();
-      let query = supabase
-        .from('transactions')
-        .select(TRANSACTION_SELECT)
-        .eq('user_id', user.id)
-        .is('deleted_at', null)
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: false })
-        .order('created_at', { ascending: false });
+      const rows: TransactionRow[] = [];
+      let page = 0;
 
-      if (type && type !== 'all') query = query.eq('type', type);
+      while (true) {
+        let query = supabase
+          .from('transactions')
+          .select(TRANSACTION_SELECT)
+          .eq('user_id', user.id)
+          .is('deleted_at', null)
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .order('date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
+          .range(page * TRANSACTION_PAGE_SIZE, ((page + 1) * TRANSACTION_PAGE_SIZE) - 1);
 
-      const { data, error: fetchError } = await query;
-      if (fetchError) throw fetchError;
-      const next = ((data ?? []) as TransactionRow[]).map(normalizeTransaction);
+        if (type && type !== 'all') query = query.eq('type', type);
+
+        const { data, error: fetchError } = await query;
+        if (fetchError) throw fetchError;
+        if (requestId !== requestIdRef.current) return [];
+
+        const pageRows = (data ?? []) as TransactionRow[];
+        rows.push(...pageRows);
+        if (pageRows.length < TRANSACTION_PAGE_SIZE) break;
+        page += 1;
+      }
+
+      const next = rows.map(normalizeTransaction);
       if (requestId === requestIdRef.current) setTransactions(next);
       return next;
     } catch (fetchError) {

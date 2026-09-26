@@ -13,6 +13,12 @@ export function formatMonthYear(year: number, month: number): string {
   }).format(new Date(year, month - 1, 1));
 }
 
+export function formatMonth(year: number, month: number): string {
+  return new Intl.DateTimeFormat('th-TH-u-ca-gregory', {
+    month: 'long',
+  }).format(new Date(year, month - 1, 1));
+}
+
 export function formatLongDate(dateStr: string): string {
   return new Intl.DateTimeFormat('th-TH-u-ca-gregory', {
     weekday: 'long',

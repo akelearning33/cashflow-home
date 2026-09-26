@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Tags, Rows3, RotateCcw } from 'lucide-react';
+import { Plus, Printer, Search, Tags, Rows3, RotateCcw } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { TransactionItem } from '../components/TransactionItem';
 import { TransactionDialog } from '../components/TransactionDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ReportDialog } from '../components/ReportDialog';
 import { PeriodNavigator } from '../components/PeriodNavigator';
 import { useToast } from '../hooks/useToast';
 import { useTransactions } from '../hooks/useTransactions';
@@ -29,6 +30,7 @@ export function TransactionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
@@ -62,7 +64,7 @@ export function TransactionsPage() {
       const categoryKey = transaction.category_id ?? `legacy:${transaction.type}:${transaction.category}`;
       return (typeFilter === 'all' || transaction.type === typeFilter)
         && (categoryFilter === 'all' || categoryKey === categoryFilter)
-        && (!query || transaction.category.toLocaleLowerCase('th').includes(query) || transaction.note?.toLocaleLowerCase('th').includes(query));
+        && (!query || transaction.category.toLocaleLowerCase('th').includes(query) || transaction.recurring_name?.toLocaleLowerCase('th').includes(query) || transaction.note?.toLocaleLowerCase('th').includes(query));
     });
   }, [categoryFilter, search, transactions, typeFilter]);
 
@@ -91,6 +93,14 @@ export function TransactionsPage() {
     else sum.expense += Number(transaction.amount);
     return sum;
   }, { income: 0, expense: 0 }), [filteredTransactions]);
+
+  const reportFilters = useMemo(() => {
+    const active: string[] = [];
+    if (typeFilter !== 'all') active.push(typeFilter === 'income' ? 'รายรับ' : 'รายจ่าย');
+    if (categoryFilter !== 'all') active.push(`หมวดหมู่: ${categoryOptions.find((option) => option.value === categoryFilter)?.label ?? categoryFilter}`);
+    if (search.trim()) active.push(`ค้นหา: ${search.trim()}`);
+    return active;
+  }, [categoryFilter, categoryOptions, search, typeFilter]);
 
   function openAdd() {
     setEditingTransaction(null);
@@ -174,6 +184,10 @@ export function TransactionsPage() {
           </div>
         </section>
 
+        <div className="flex justify-end">
+          <button type="button" onClick={() => setReportOpen(true)} disabled={loading || Boolean(error)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"><Printer size={17} /> พิมพ์ / บันทึก PDF</button>
+        </div>
+
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="grid grid-cols-3 gap-3 border-b border-slate-100 p-4 text-center">
             <div><p className="text-xs text-slate-400">รายรับ</p><p className="mt-1 text-sm font-extrabold text-emerald-600">+{formatCurrency(totals.income)}</p></div>
@@ -193,6 +207,7 @@ export function TransactionsPage() {
 
       <TransactionDialog open={dialogOpen} year={year} month={month} transaction={editingTransaction} onClose={() => { setDialogOpen(false); setEditingTransaction(null); }} onSaved={handleSaved} />
       <ConfirmDialog open={Boolean(deleteTarget)} title="ลบรายการนี้หรือไม่?" description={deleteTarget ? `${deleteTarget.category} จำนวน ${formatCurrency(deleteTarget.amount)} จะถูกซ่อน และสามารถเลิกทำได้หลังลบ` : ''} confirmLabel="ลบรายการ" loading={deleting} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
+      <ReportDialog open={reportOpen} year={year} month={month} transactions={filteredTransactions} filters={reportFilters} onClose={() => setReportOpen(false)} />
     </div>
   );
 }

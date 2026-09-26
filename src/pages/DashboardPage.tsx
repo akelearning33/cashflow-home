@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, Plus, RotateCcw, Wallet } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Plus, Printer, RotateCcw, Wallet } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { Dashboard } from '../components/Dashboard';
 import { TransactionDialog } from '../components/TransactionDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ReportDialog } from '../components/ReportDialog';
 import { PeriodNavigator } from '../components/PeriodNavigator';
 import { useToast } from '../hooks/useToast';
 import { useTransactions } from '../hooks/useTransactions';
@@ -21,6 +22,7 @@ export function DashboardPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { showToast } = useToast();
   const { transactions, loading, error, fetchYearTransactions, softDeleteTransaction, restoreTransaction } = useTransactions();
@@ -87,7 +89,7 @@ export function DashboardPage() {
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h1 className="text-2xl font-black tracking-tight text-slate-900">ภาพรวมการเงิน</h1><p className="mt-1 text-sm text-slate-500">ดูสถานะและรายการสำคัญของเดือน</p></div>
-          <div className="flex flex-wrap items-center gap-2"><PeriodNavigator year={year} month={month} onChange={(nextYear, nextMonth) => { setYear(nextYear); setMonth(nextMonth); }} /><button type="button" onClick={openAdd} className="hidden min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white shadow-lg shadow-indigo-600/15 hover:bg-indigo-700 sm:flex"><Plus size={18} /> เพิ่มรายการ</button></div>
+          <div className="flex flex-wrap items-center gap-2"><PeriodNavigator year={year} month={month} onChange={(nextYear, nextMonth) => { setYear(nextYear); setMonth(nextMonth); }} /><button type="button" onClick={() => setReportOpen(true)} disabled={loading || Boolean(error)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-white px-3 text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"><Printer size={17} /> พิมพ์ / บันทึก PDF</button><button type="button" onClick={openAdd} className="hidden min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white shadow-lg shadow-indigo-600/15 hover:bg-indigo-700 sm:flex"><Plus size={18} /> เพิ่มรายการ</button></div>
         </div>
 
         {loading && <div className="grid gap-4 md:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className={`h-44 animate-pulse rounded-3xl bg-slate-200 ${index === 0 ? 'md:col-span-2' : ''}`} />)}</div>}
@@ -134,6 +136,7 @@ export function DashboardPage() {
 
       <TransactionDialog open={dialogOpen} year={year} month={month} transaction={editingTransaction} onClose={() => { setDialogOpen(false); setEditingTransaction(null); }} onSaved={handleSaved} />
       <ConfirmDialog open={Boolean(deleteTarget)} title="ลบรายการนี้หรือไม่?" description={deleteTarget ? `${deleteTarget.category} จำนวน ${formatCurrency(deleteTarget.amount)} จะถูกซ่อน และสามารถเลิกทำได้หลังลบ` : ''} confirmLabel="ลบรายการ" loading={deleting} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
+      <ReportDialog open={reportOpen} year={year} month={month} transactions={transactions} allowYear onClose={() => setReportOpen(false)} />
     </div>
   );
 }
