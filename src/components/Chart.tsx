@@ -44,11 +44,11 @@ export function Chart({ year, highlightedMonth, transactions }: Props) {
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <table className="sr-only">
+      <div className="sr-only overflow-hidden"><table>
         <caption>ตารางรายรับและรายจ่ายแต่ละเดือนของปี {year}</caption>
         <thead><tr><th>เดือน</th><th>รายรับ</th><th>รายจ่าย</th></tr></thead>
         <tbody>{data.map((row) => <tr key={row.month}><th>{row.month}</th><td>{formatCurrency(row.income)}</td><td>{formatCurrency(row.expense)}</td></tr>)}</tbody>
-      </table>
+      </table></div>
     </section>
   );
 }

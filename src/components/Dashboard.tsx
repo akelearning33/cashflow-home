@@ -1,17 +1,22 @@
-import { ArrowDownRight, ArrowUpRight, ReceiptText, Wallet } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ReceiptText } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
 import type { Transaction } from '../types';
-import { formatCurrency } from '../utils/formatCurrency';
+import { CurrencyAmount } from './CurrencyAmount';
 import { getCategoryColor } from '../utils/categoryColors';
+import { formatMonthYear } from '../utils/formatDate';
+import { periodSearch } from '../hooks/useSelectedPeriod';
 import { TransactionItem } from './TransactionItem';
 
 interface Props {
   transactions: Transaction[];
+  year: number;
+  month: number;
   onEdit: (transaction: Transaction) => void;
   onDelete: (transaction: Transaction) => void;
   onAdd: () => void;
 }
 
-export function Dashboard({ transactions, onEdit, onDelete, onAdd }: Props) {
+export function Dashboard({ transactions, year, month, onEdit, onDelete, onAdd }: Props) {
   const income = transactions.filter((transaction) => transaction.type === 'income').reduce((sum, transaction) => sum + Number(transaction.amount), 0);
   const expense = transactions.filter((transaction) => transaction.type === 'expense').reduce((sum, transaction) => sum + Number(transaction.amount), 0);
   const net = income - expense;
@@ -25,33 +30,33 @@ export function Dashboard({ transactions, onEdit, onDelete, onAdd }: Props) {
 
   return (
     <div className="space-y-5">
-      <section className="grid gap-4 md:grid-cols-4" aria-label="สรุปยอดประจำเดือน">
-        <article className="flex min-h-44 flex-col justify-between rounded-3xl bg-slate-900 p-6 text-white shadow-xl shadow-slate-900/15 md:col-span-2">
-          <div className="flex items-start justify-between">
-            <div><p className="text-xs font-bold uppercase tracking-widest text-slate-400">ยอดสุทธิเดือนนี้</p><p className="mt-1 text-sm text-slate-400">รายรับหักรายจ่ายที่บันทึกไว้</p></div>
-            <span className="rounded-xl bg-white/10 p-2.5"><Wallet size={20} /></span>
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4" aria-label={`สรุปยอด ${formatMonthYear(year, month)}`}>
+        <article className="col-span-2 flex min-h-32 flex-col justify-between rounded-2xl bg-slate-900 p-4 text-white sm:min-h-36 sm:p-5 md:col-span-2 md:min-h-44 md:rounded-3xl md:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div><p className="text-sm font-semibold text-slate-100">ยอดสุทธิ</p><p className="mt-1 text-xs text-slate-300">{formatMonthYear(year, month)} · รายรับหักรายจ่าย</p></div>
+            <span className="rounded-xl bg-white/10 p-2.5 text-white"><ReceiptText size={18} /></span>
           </div>
-          <p className={`mt-8 text-4xl font-black tracking-tight sm:text-5xl ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{net >= 0 ? '+' : '−'}{formatCurrency(Math.abs(net))}</p>
+          <CurrencyAmount amount={net} sign={net >= 0 ? 'positive' : 'negative'} className={`mt-4 block text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl ${net >= 0 ? 'text-emerald-300' : 'text-rose-300'}`} />
         </article>
-        <article className="flex min-h-44 flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">รายรับ</p><span className="rounded-xl bg-emerald-50 p-2 text-emerald-600"><ArrowUpRight size={18} /></span></div>
-          <p className="text-2xl font-black text-emerald-600">+{formatCurrency(income)}</p>
+        <article className="flex min-h-24 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-3 sm:min-h-28 sm:p-4 md:min-h-36 md:rounded-2xl md:p-5">
+          <div className="flex items-center justify-between gap-1"><p className="text-sm font-semibold text-slate-700">รายรับ</p><span className="rounded-lg bg-emerald-50 p-1.5 text-emerald-700"><ArrowUpRight size={16} /></span></div>
+          <CurrencyAmount amount={income} sign="positive" className="mt-3 block text-base font-semibold text-emerald-700 sm:text-lg md:text-xl" />
         </article>
-        <article className="flex min-h-44 flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">รายจ่าย</p><span className="rounded-xl bg-rose-50 p-2 text-rose-600"><ArrowDownRight size={18} /></span></div>
-          <p className="text-2xl font-black text-rose-600">−{formatCurrency(expense)}</p>
+        <article className="flex min-h-24 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-3 sm:min-h-28 sm:p-4 md:min-h-36 md:rounded-2xl md:p-5">
+          <div className="flex items-center justify-between gap-1"><p className="text-sm font-semibold text-slate-700">รายจ่าย</p><span className="rounded-lg bg-rose-50 p-1.5 text-rose-700"><ArrowDownRight size={16} /></span></div>
+          <CurrencyAmount amount={expense} sign="negative" className="mt-3 block text-base font-semibold text-rose-700 sm:text-lg md:text-xl" />
         </article>
       </section>
 
       <section className="grid gap-5 lg:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between"><div><h2 className="font-bold text-slate-800">หมวดรายจ่ายสูงสุด</h2><p className="text-xs text-slate-400">เรียงจากยอดใช้จ่ายมากที่สุด</p></div></div>
-          {topCategories.length === 0 ? <div className="py-10 text-center text-sm text-slate-400">ยังไม่มีรายจ่ายในเดือนนี้</div> : <div className="space-y-4">{topCategories.map((category, index) => { const percentage = expense ? Math.round((category.amount / expense) * 100) : 0; return <div key={category.name}><div className="mb-1.5 flex items-center justify-between gap-3"><span className="truncate text-sm font-bold text-slate-700">{category.name}</span><span className="text-sm font-extrabold text-rose-600">{formatCurrency(category.amount)}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: getCategoryColor(category.name, index) }} /></div><p className="mt-1 text-right text-[11px] text-slate-400">{percentage}% ของรายจ่าย</p></div>; })}</div>}
+        <article className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <div className="mb-4"><h2 className="font-semibold text-slate-900">หมวดรายจ่ายสูงสุด</h2><p className="mt-0.5 text-xs text-slate-600">{formatMonthYear(year, month)}</p></div>
+          {topCategories.length === 0 ? <div className="py-8 text-center text-sm text-slate-600">เดือนนี้ยังไม่มีรายจ่าย</div> : <div className="space-y-4">{topCategories.map((category, index) => { const percentage = expense ? Math.round((category.amount / expense) * 100) : 0; return <div key={category.name}><div className="mb-1.5 flex items-center justify-between gap-3"><span className="truncate text-sm font-medium text-slate-800">{category.name}</span><CurrencyAmount amount={category.amount} className="text-sm font-semibold text-slate-800" /></div><div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: getCategoryColor(category.name, index) }} /></div><p className="mt-1 text-right text-xs text-slate-600">{percentage}% ของรายจ่าย</p></div>; })}</div>}
         </article>
 
         <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 className="font-bold text-slate-800">รายการล่าสุด</h2><p className="text-xs text-slate-400">5 รายการล่าสุดในเดือนนี้</p></div><ReceiptText size={19} className="text-slate-400" /></div>
-          {recent.length === 0 ? <div className="px-6 py-10 text-center"><p className="text-sm text-slate-400">ยังไม่มีรายการ</p><button type="button" onClick={onAdd} className="mt-3 min-h-11 rounded-xl bg-indigo-50 px-4 text-sm font-bold text-indigo-700">เพิ่มรายการแรก</button></div> : <div className="divide-y divide-slate-50 p-1">{recent.map((transaction) => <TransactionItem key={transaction.id} transaction={transaction} onEdit={onEdit} onDelete={onDelete} compact />)}</div>}
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5 sm:px-5"><div><h2 className="font-semibold text-slate-900">รายการล่าสุด</h2><p className="text-xs text-slate-600">5 รายการ · {formatMonthYear(year, month)}</p></div><NavLink to={{ pathname: '/transactions', search: periodSearch(year, month) }} className="min-h-11 inline-flex items-center rounded-lg px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">ดูทั้งหมด</NavLink></div>
+          {recent.length === 0 ? <div className="px-5 py-8 text-center"><p className="text-sm text-slate-600">เดือนนี้ยังไม่มีรายการ</p><button type="button" onClick={onAdd} className="mt-3 min-h-11 rounded-xl bg-indigo-50 px-4 text-sm font-semibold text-indigo-800 hover:bg-indigo-100">เพิ่มรายการแรก</button></div> : <div className="divide-y divide-slate-100 px-1">{recent.map((transaction) => <TransactionItem key={transaction.id} transaction={transaction} onEdit={onEdit} onDelete={onDelete} compact />)}</div>}
         </article>
       </section>
     </div>

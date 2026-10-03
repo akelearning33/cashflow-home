@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Printer, Search, Tags, Rows3, RotateCcw } from 'lucide-react';
+import { Plus, Printer, Search, Tags, Rows3, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { TransactionItem } from '../components/TransactionItem';
@@ -14,15 +14,16 @@ import { formatLongDate } from '../utils/formatDate';
 import { getCategoryColor } from '../utils/categoryColors';
 import { getPeriodFromDate } from '../utils/period';
 import { getThaiErrorMessage } from '../utils/errors';
+import { useSelectedPeriod } from '../hooks/useSelectedPeriod';
+import { AppDialog } from '../components/AppDialog';
+import { CurrencyAmount } from '../components/CurrencyAmount';
 import type { Transaction, TransactionType } from '../types';
 
 type FilterType = TransactionType | 'all';
 type ViewMode = 'list' | 'category';
 
 export function TransactionsPage() {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const { year, month, setPeriod } = useSelectedPeriod();
   const [typeFilter, setTypeFilter] = useState<FilterType>('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -31,6 +32,7 @@ export function TransactionsPage() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
@@ -93,6 +95,7 @@ export function TransactionsPage() {
     else sum.expense += Number(transaction.amount);
     return sum;
   }, { income: 0, expense: 0 }), [filteredTransactions]);
+  const activeFilterCount = Number(typeFilter !== 'all') + Number(categoryFilter !== 'all');
 
   const reportFilters = useMemo(() => {
     const active: string[] = [];
@@ -114,8 +117,7 @@ export function TransactionsPage() {
 
   async function handleSaved(transaction: Transaction) {
     const period = getPeriodFromDate(transaction.date);
-    setYear(period.year);
-    setMonth(period.month);
+    setPeriod(period.year, period.month);
     setDialogOpen(false);
     setEditingTransaction(null);
     await fetchTransactions(period.year, period.month, 'all');
@@ -149,55 +151,56 @@ export function TransactionsPage() {
   return (
     <div className="min-h-screen bg-slate-50 pb-24 sm:pb-0">
       <Navbar />
-      <main className="mx-auto max-w-4xl space-y-5 px-4 py-6">
+      <main className="mx-auto max-w-4xl space-y-4 px-4 py-4 sm:space-y-5 sm:py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900">รายการรับ–จ่าย</h1>
-            <p className="mt-1 text-sm text-slate-500">ค้นหา แก้ไข และตรวจสอบรายการของคุณ</p>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">รายการรับ–จ่าย</h1>
+            <p className="mt-1 text-sm text-slate-600">ค้นหาและดูรายการแยกตามเดือน</p>
           </div>
           <button type="button" onClick={openAdd} className="hidden min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white shadow-lg shadow-indigo-600/15 hover:bg-indigo-700 sm:flex">
             <Plus size={18} /> เพิ่มรายการ
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <PeriodNavigator year={year} month={month} onChange={(nextYear, nextMonth) => { setYear(nextYear); setMonth(nextMonth); }} />
-          <div className="grid grid-cols-2 rounded-xl bg-slate-200/70 p-1">
-            <button type="button" onClick={() => setViewMode('list')} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold ${viewMode === 'list' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`} aria-pressed={viewMode === 'list'}><Rows3 size={16} /> รายการ</button>
-            <button type="button" onClick={() => setViewMode('category')} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold ${viewMode === 'category' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`} aria-pressed={viewMode === 'category'}><Tags size={16} /> ตามหมวด</button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <PeriodNavigator year={year} month={month} onChange={setPeriod} />
+          <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+              <button type="button" onClick={() => setViewMode('list')} className={`flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold ${viewMode === 'list' ? 'bg-white text-indigo-800 shadow-sm' : 'text-slate-700'}`} aria-pressed={viewMode === 'list'}><Rows3 size={16} /> รายการ</button>
+              <button type="button" onClick={() => setViewMode('category')} className={`flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold ${viewMode === 'category' ? 'bg-white text-indigo-800 shadow-sm' : 'text-slate-700'}`} aria-pressed={viewMode === 'category'}><Tags size={16} /> ตามหมวด</button>
+            </div>
+            <button type="button" onClick={() => setReportOpen(true)} disabled={loading || Boolean(error)} aria-label="พิมพ์หรือบันทึกรายงาน PDF" title="พิมพ์ / บันทึก PDF" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-indigo-800 hover:bg-indigo-50 disabled:opacity-50"><Printer size={16} /><span className="hidden md:inline">รายงาน</span></button>
           </div>
         </div>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="ตัวกรองรายการ">
-          <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+        <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4" aria-label="ค้นหาและกรองรายการ">
+          <div className="flex flex-wrap gap-2 sm:flex-nowrap">
             <label className="relative block">
               <span className="sr-only">ค้นหารายการ</span>
               <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" placeholder="ค้นหาหมวดหมู่หรือหมายเหตุ" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="ค้นหาหมวดหรือหมายเหตุ" />
             </label>
-            <select aria-label="กรองประเภทรายการ" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as FilterType)} className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100">
+            <button type="button" onClick={() => setFiltersOpen(true)} aria-expanded={filtersOpen} className="inline-flex min-h-11 flex-shrink-0 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:hidden"><SlidersHorizontal size={16} /> กรอง{activeFilterCount > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-indigo-100 px-1 text-xs text-indigo-800">{activeFilterCount}</span>}</button>
+            <select aria-label="กรองประเภทรายการ" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as FilterType)} className="hidden min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:block">
               <option value="all">รับ–จ่ายทั้งหมด</option><option value="expense">รายจ่าย</option><option value="income">รายรับ</option>
             </select>
-            <select aria-label="กรองหมวดหมู่" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100">
+            <select aria-label="กรองหมวดหมู่" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="hidden min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:block">
               <option value="all">ทุกหมวดหมู่</option>{categoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </div>
+          {activeFilterCount > 0 && <button type="button" onClick={() => { setTypeFilter('all'); setCategoryFilter('all'); }} className="mt-2 min-h-10 rounded-lg px-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">ล้างตัวกรอง ({activeFilterCount})</button>}
         </section>
 
-        <div className="flex justify-end">
-          <button type="button" onClick={() => setReportOpen(true)} disabled={loading || Boolean(error)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"><Printer size={17} /> พิมพ์ / บันทึก PDF</button>
-        </div>
-
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="grid grid-cols-3 gap-3 border-b border-slate-100 p-4 text-center">
-            <div><p className="text-xs text-slate-400">รายรับ</p><p className="mt-1 text-sm font-extrabold text-emerald-600">+{formatCurrency(totals.income)}</p></div>
-            <div><p className="text-xs text-slate-400">รายจ่าย</p><p className="mt-1 text-sm font-extrabold text-rose-600">−{formatCurrency(totals.expense)}</p></div>
-            <div><p className="text-xs text-slate-400">สุทธิ</p><p className={`mt-1 text-sm font-extrabold ${totals.income - totals.expense >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatCurrency(totals.income - totals.expense)}</p></div>
+          <div className="grid grid-cols-3 gap-2 border-b border-slate-100 p-3 text-center sm:p-4">
+            <div><p className="text-xs font-medium text-slate-600">รายรับ</p><p className="tabular-nums mt-1 whitespace-nowrap text-xs font-semibold text-emerald-700 sm:text-sm">+{formatCurrency(totals.income)}</p></div>
+            <div><p className="text-xs font-medium text-slate-600">รายจ่าย</p><p className="tabular-nums mt-1 whitespace-nowrap text-xs font-semibold text-rose-700 sm:text-sm">−{formatCurrency(totals.expense)}</p></div>
+            <div><p className="text-xs font-medium text-slate-600">สุทธิ</p><CurrencyAmount amount={totals.income - totals.expense} sign={totals.income === totals.expense ? 'none' : totals.income > totals.expense ? 'positive' : 'negative'} className={`mt-1 block text-xs font-semibold sm:text-sm ${totals.income - totals.expense >= 0 ? 'text-emerald-700' : 'text-rose-700'}`} /></div>
           </div>
 
           {loading && <div className="space-y-3 p-4">{Array.from({ length: 5 }, (_, index) => <div key={index} className="h-16 animate-pulse rounded-xl bg-slate-100" />)}</div>}
           {!loading && error && <div className="p-6 text-center"><p className="text-sm font-medium text-rose-700">{error}</p><button type="button" onClick={() => void fetchTransactions(year, month, 'all')} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-50 px-4 text-sm font-bold text-rose-700"><RotateCcw size={16} /> ลองใหม่</button></div>}
-          {!loading && !error && filteredTransactions.length === 0 && <div className="px-6 py-14 text-center"><p className="font-bold text-slate-700">ยังไม่พบรายการ</p><p className="mt-1 text-sm text-slate-400">ลองเปลี่ยนตัวกรอง หรือเพิ่มรายการแรกของเดือนนี้</p><button type="button" onClick={openAdd} className="mt-4 min-h-11 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white"><Plus size={17} className="mr-1 inline" /> เพิ่มรายการ</button></div>}
+          {!loading && !error && filteredTransactions.length === 0 && <div className="px-5 py-10 text-center"><p className="font-semibold text-slate-800">{transactions.length === 0 ? 'เดือนนี้ยังไม่มีรายการ' : 'ไม่พบรายการที่ตรงกับตัวกรอง'}</p><p className="mt-1 text-sm text-slate-600">{transactions.length === 0 ? 'เพิ่มรายการแรกเพื่อเริ่มบันทึกรายรับ–รายจ่าย' : 'ลองเปลี่ยนคำค้นหา หรือล้างตัวกรอง'}</p><div className="mt-3 flex flex-wrap justify-center gap-2">{activeFilterCount > 0 && <button type="button" onClick={() => { setTypeFilter('all'); setCategoryFilter('all'); setSearch(''); }} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700">ล้างตัวกรอง</button>}<button type="button" onClick={openAdd} className="min-h-11 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white"><Plus size={16} className="mr-1 inline" /> เพิ่มรายการ</button></div></div>}
 
           {!loading && !error && filteredTransactions.length > 0 && viewMode === 'list' && <div>{groupedByDate.map(([date, items]) => <div key={date} className="border-b border-slate-100 last:border-0"><div className="flex items-center justify-between bg-slate-50 px-4 py-2"><h2 className="text-xs font-bold text-slate-600">{formatLongDate(date)}</h2><span className="text-xs text-slate-400">{items.length} รายการ</span></div><div className="divide-y divide-slate-50 px-1">{items.map((transaction) => <TransactionItem key={transaction.id} transaction={transaction} onEdit={openEdit} onDelete={setDeleteTarget} compact />)}</div></div>)}</div>}
 
@@ -208,6 +211,13 @@ export function TransactionsPage() {
       <TransactionDialog open={dialogOpen} year={year} month={month} transaction={editingTransaction} onClose={() => { setDialogOpen(false); setEditingTransaction(null); }} onSaved={handleSaved} />
       <ConfirmDialog open={Boolean(deleteTarget)} title="ลบรายการนี้หรือไม่?" description={deleteTarget ? `${deleteTarget.category} จำนวน ${formatCurrency(deleteTarget.amount)} จะถูกซ่อน และสามารถเลิกทำได้หลังลบ` : ''} confirmLabel="ลบรายการ" loading={deleting} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
       <ReportDialog open={reportOpen} year={year} month={month} transactions={filteredTransactions} filters={reportFilters} onClose={() => setReportOpen(false)} />
+      <AppDialog open={filtersOpen} titleId="transaction-filters-title" title="กรองรายการ" description="เลือกประเภทรายการและหมวดหมู่" onClose={() => setFiltersOpen(false)}>
+        <div className="space-y-4 p-4 sm:p-5">
+          <label className="block text-sm font-medium text-slate-800">ประเภทรายการ<select aria-label="กรองประเภทรายการ" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as FilterType)} className="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900"><option value="all">รับ–จ่ายทั้งหมด</option><option value="expense">รายจ่าย</option><option value="income">รายรับ</option></select></label>
+          <label className="block text-sm font-medium text-slate-800">หมวดหมู่<select aria-label="กรองหมวดหมู่" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="mt-1.5 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900"><option value="all">ทุกหมวดหมู่</option>{categoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <div className="flex gap-2 border-t border-slate-100 pt-3"><button type="button" onClick={() => { setTypeFilter('all'); setCategoryFilter('all'); }} className="min-h-12 flex-1 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700">ล้างตัวกรอง</button><button type="button" onClick={() => setFiltersOpen(false)} className="min-h-12 flex-1 rounded-xl bg-indigo-600 text-sm font-semibold text-white">เสร็จสิ้น</button></div>
+        </div>
+      </AppDialog>
     </div>
   );
 }

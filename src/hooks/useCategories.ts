@@ -33,10 +33,13 @@ export function useCategories() {
   const addCategory = useCallback(async (type: TransactionType, name: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
-    const { error: insertError } = await supabase
+    const { data, error: insertError } = await supabase
       .from('categories')
-      .insert({ type, name: name.trim(), user_id: user.id, is_active: true });
+      .insert({ type, name: name.trim(), user_id: user.id, is_active: true })
+      .select('id, type, name, user_id, is_active')
+      .single();
     if (insertError) throw new Error(getThaiErrorMessage(insertError, 'เพิ่มหมวดหมู่ไม่สำเร็จ'));
+    return data as Category;
   }, []);
 
   const addSystemCategory = useCallback(async (type: TransactionType, name: string) => {

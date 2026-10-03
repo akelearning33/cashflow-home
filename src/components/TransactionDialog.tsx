@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
-import { X } from 'lucide-react';
+import { useState } from 'react';
 import type { Transaction } from '../types';
 import { TransactionForm } from './TransactionForm';
+import { AppDialog } from './AppDialog';
 
 interface Props {
   open: boolean;
@@ -13,35 +13,38 @@ interface Props {
 }
 
 export function TransactionDialog({ open, year, month, transaction, onClose, onSaved }: Props) {
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
-    window.addEventListener('keydown', handleKeyDown);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
-    };
-  }, [onClose, open]);
+  const [formDirty, setFormDirty] = useState(false);
+  const [formSaving, setFormSaving] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
-  if (!open) return null;
+  function closeDialog() {
+    if (formSaving) return;
+    setFormDirty(false);
+    setDiscardOpen(false);
+    setFormSaving(false);
+    onClose();
+  }
+
+  function requestClose() {
+    if (formSaving) return;
+    if (formDirty) setDiscardOpen(true);
+    else closeDialog();
+  }
+
+  function discardChanges() {
+    closeDialog();
+  }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()} role="presentation">
-      <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:max-w-xl sm:rounded-2xl" role="dialog" aria-modal="true" aria-labelledby="transaction-dialog-title">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-5 py-4 backdrop-blur">
-          <div>
-            <h2 id="transaction-dialog-title" className="text-lg font-extrabold text-slate-900">{transaction ? 'แก้ไขรายการ' : 'เพิ่มรายการใหม่'}</h2>
-            <p className="text-xs text-slate-500">ข้อมูลของคุณจะมองเห็นได้เฉพาะบัญชีนี้</p>
-          </div>
-          <button type="button" onClick={onClose} className="grid min-h-11 min-w-11 place-items-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-800" aria-label="ปิดหน้าต่าง">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="p-5">
-          <TransactionForm key={transaction?.id ?? `${year}-${month}`} defaultYear={year} defaultMonth={month} initialTransaction={transaction} onSuccess={onSaved} onCancel={onClose} />
-        </div>
-      </div>
-    </div>
+    <>
+    <AppDialog open={open} titleId="transaction-dialog-title" title={transaction ? 'แก้ไขรายการ' : 'เพิ่มรายการใหม่'} description="ข้อมูลการเงินจะแสดงเฉพาะในบัญชีของคุณ" onClose={requestClose}>
+      {open && <div className="p-4 sm:p-5">
+          <TransactionForm key={transaction?.id ?? `${year}-${month}`} defaultYear={year} defaultMonth={month} initialTransaction={transaction} onSuccess={async (saved) => { setFormDirty(false); setDiscardOpen(false); await onSaved(saved); }} onCancel={requestClose} onDirtyChange={setFormDirty} onBusyChange={setFormSaving} />
+      </div>}
+    </AppDialog>
+    <AppDialog open={discardOpen} titleId="discard-transaction-title" title="ทิ้งการเปลี่ยนแปลงหรือไม่?" description="ข้อมูลที่ยังไม่ได้บันทึกจะหายไป" role="alertdialog" onClose={() => setDiscardOpen(false)}>
+      <div className="flex gap-2 p-4 sm:p-5"><button type="button" onClick={() => setDiscardOpen(false)} className="min-h-12 flex-1 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700">ทำต่อ</button><button type="button" onClick={discardChanges} className="min-h-12 flex-1 rounded-xl bg-rose-700 text-sm font-semibold text-white hover:bg-rose-800">ทิ้งรายการ</button></div>
+    </AppDialog>
+    </>
   );
 }

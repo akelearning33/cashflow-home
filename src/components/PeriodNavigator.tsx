@@ -79,16 +79,16 @@ export function PeriodNavigator({ year, month, onChange }: Props) {
   }
 
   return (
-    <div ref={containerRef} className="relative flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm" aria-label="เลือกเดือน">
+    <div ref={containerRef} className="relative flex w-fit max-w-full min-w-0 items-center gap-0.5 rounded-xl border border-slate-200 bg-white p-1" aria-label="เลือกเดือน">
       {!isCurrentMonth && (
-        <button type="button" onClick={goToCurrentMonth} className="min-h-11 rounded-lg px-3 text-xs font-bold text-indigo-600 hover:bg-indigo-50">เดือนนี้</button>
+        <button type="button" onClick={goToCurrentMonth} className="min-h-10 flex-shrink-0 rounded-lg px-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 sm:px-3">เดือนนี้</button>
       )}
       <button type="button" onClick={() => move(-1)} className="grid min-h-11 min-w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900" aria-label="เดือนก่อนหน้า">
         <ChevronLeft size={19} />
       </button>
       <button type="button" onClick={togglePicker} className="flex min-h-11 min-w-40 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold text-slate-800 hover:bg-slate-100" aria-expanded={pickerOpen} aria-haspopup="dialog">
         <CalendarDays size={17} className="text-slate-400" />
-        <span aria-live="polite">{formatMonthYear(year, month)}</span>
+        <span className="truncate" aria-live="polite">{formatMonthYear(year, month)}</span>
         <ChevronDown size={16} className={`text-slate-400 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} />
       </button>
       <button type="button" onClick={() => move(1)} className="grid min-h-11 min-w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900" aria-label="เดือนถัดไป">
